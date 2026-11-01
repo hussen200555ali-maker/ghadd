@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- إعدادات خدمة إمكانية الوصول: استيقاظ بالأحداث فقط (بلا حلقة استطلاع)
+     وcanTakeScreenshot مطلوب لالتقاط الإطار عبر takeScreenshot (API 30+) -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canTakeScreenshot="true"
+    android:notificationTimeout="120"
+    android:description="@string/accessibility_description" />

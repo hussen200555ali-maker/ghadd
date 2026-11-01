@@ -1,0 +1,23 @@
+name: ghadd
+description: نموذج أولي — حماية بصرية طوعية تعمل على الجهاز بالكامل، بلا صلاحية INTERNET (وثيقة الجدوى، الملحق أ)
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # محرك الكشف الموثق في القسم 4.2 من دراسة الجدوى — نماذج مدمجة تعمل على الجهاز
+  nsfw_detect: ^2.8.0
+  # تخزين محلي فقط للإعدادات والإحصاءات
+  shared_preferences: ^2.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

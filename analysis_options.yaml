@@ -1,0 +1,7 @@
+# قواعد الفحص الثابت للنموذج الأولي
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    avoid_print: true

@@ -1,0 +1,192 @@
+package app.ghadd.guard
+
+import android.accessibilityservice.AccessibilityService
+import android.graphics.Bitmap
+import android.graphics.ColorSpace
+import android.hardware.HardwareBuffer
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.accessibility.AccessibilityEvent
+import io.flutter.FlutterInjector
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineGroup
+import io.flutter.embedding.engine.dart.DartEntrypoint
+import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.Executors
+
+/**
+ * الطبقة الأولى (الالتقاط والاستيقاظ) + الجسر إلى محرك الكشف (القسم 4.1 من الوثيقة).
+ *
+ * عقد دورة حياة اللقطة (وثيقة الردّ التقني، السؤال 3 — «اللقطة لا تلمس القرص أصلًا»):
+ *  1) takeScreenshot() → ScreenshotResult يحمل HardwareBuffer في الذاكرة المتطايرة فقط.
+ *  2) نسخة Bitmap واحدة عبر wrapHardwareBuffer ثم copy — ثم hardwareBuffer.close() فورًا.
+ *  3) ضغط JPEG جودة 85 داخل ByteArrayOutputStream — بلا أي ملف وسيط ولا مجلد cache.
+ *  4) bitmap.recycle() مباشرة بعد الضغط — البكسلات تعود للنظام قبل بدء التحليل.
+ *  5) ByteArray الوحيد يمر عبر قناة ghadd/analyze إلى محرك nsfw_detect (scanBytes).
+ *  6) النتيجة تعود في reply الاستدعاء نفسها، ويحرسها عدّاد توليد + مهلة 5 ثوانٍ:
+ *     أي نتيجة متأخرة أو قديمة تُهمل ولا تُطبَّق على إطار جديد.
+ *  7) لا مرجع عام ولا سجلّ محتوى — عدّادات أرقام مجردة فقط في GuardPrefs.
+ */
+class GuardAccessibilityService : AccessibilityService() {
+
+    companion object {
+        const val TAG = "Ghadd"
+        const val CHANNEL = "ghadd/analyze"
+        const val DEBOUNCE_MS = 400L
+        const val WATCHDOG_MS = 5_000L
+
+        @Volatile
+        var instance: GuardAccessibilityService? = null
+            private set
+    }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val screenshotExecutor = Executors.newSingleThreadExecutor()
+    private var engine: FlutterEngine? = null
+    private var pending = false
+    private var lastHandledAt = 0L
+    private var lastPackage: String? = null
+
+    /** عدّاد التوليد: كل حدث جديد يُبطل أي نتيجة قديمة في الطريق (منع «الغلطة الزمنية»). */
+    private var generation = 0
+    private var deadlineGen = 0
+    private var deadlineAt = 0L
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+        Log.i(TAG, "خدمة إمكانية الوصول متصلة — حماية غَضّ جاهزة")
+    }
+
+    override fun onDestroy() {
+        instance = null
+        super.onDestroy()
+    }
+
+    override fun onInterrupt() { /* لا شيء مطلوب */ }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null || !GuardPrefs.canGuard(this)) return
+        val type = event.eventType
+        if (type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        ) return
+
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg == packageName) return                  // تجاهل نفسه
+        if (GuardPrefs.isWhitelisted(this, pkg)) return // القائمة البيضاء (4.1)
+        lastPackage = pkg
+
+        val now = System.currentTimeMillis()
+        if (now - lastHandledAt < DEBOUNCE_MS) {
+            if (!pending) {
+                pending = true
+                mainHandler.postDelayed({
+                    pending = false
+                    captureAndAnalyze()
+                }, DEBOUNCE_MS)
+            }
+            return
+        }
+        lastHandledAt = now
+        captureAndAnalyze()
+    }
+
+    private fun captureAndAnalyze() {
+        val svc = instance ?: return
+        if (!GuardPrefs.canGuard(this)) return
+
+        val g = ++generation
+        // takeScreenshot متاح في خدمة إمكانية الوصول من API 30 (أدنى نسخة مدعومة هنا).
+        // تطبيقات FLAG_SECURE ترفض الالتقاط هنا ببساطة (خطأ/فراغ) — لا يُنشأ كائن أصلًا
+        // ولا يُزاد أي عدّاد محجوب؛ سلوك «الاحترام الفوري» في السؤال 4 من وثيقة الردّ.
+        svc.takeScreenshot(
+            screenshotExecutor,
+            object : TakeScreenshotCallback() {
+                override fun onCapturedScreenshot(result: ScreenshotResult?) {
+                    if (result == null || g != generation) return // نتيجة متخلفة — تُهمل
+                    val jpeg = toJpegInMemory(result.hardwareBuffer, result.colorSpace)
+                    if (jpeg == null || g != generation) return
+                    mainHandler.post { askDart(jpeg, g) }
+                }
+            }
+        )
+    }
+
+    /** HardwareBuffer → JPEG bytes في الذاكرة فقط، مع إغلاق المصدر وتحرير البكسلات فورًا. */
+    private fun toJpegInMemory(buffer: HardwareBuffer, cs: ColorSpace?): ByteArray? {
+        var bmp: Bitmap? = null
+        return try {
+            val hw = Bitmap.wrapHardwareBuffer(buffer, cs) ?: return null
+            bmp = hw.copy(Bitmap.Config.ARGB_8888, false)
+            buffer.close() // أغلق المصدر بعد النسخ مباشرة — لا مرجعان للإطار أبدًا
+            val out = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 85, out) // ~300KB — في RAM فقط
+            out.toByteArray()
+        } catch (t: Throwable) {
+            Log.w(TAG, "تعذر تحويل اللقطة: ${t.message}")
+            null
+        } finally {
+            bmp?.recycle() // تحرير البكسلات حتى عند الاستثناء (try/finally — السؤال 3)
+        }
+    }
+
+    /** الجسر إلى محرك nsfw_detect الذي يعمل داخل isolate خلفي مخصص (guardMain). */
+    private fun askDart(jpeg: ByteArray, g: Int) {
+        val eng = ensureEngine() ?: return
+        if (g != generation) return
+        val pkg = lastPackage ?: "unknown"
+        deadlineGen = g
+        deadlineAt = System.currentTimeMillis() + WATCHDOG_MS
+
+        MethodChannel(eng.dartExecutor.binaryMessenger, CHANNEL)
+            .invokeMethod(
+                "analyze",
+                mapOf("bytes" to jpeg, "threshold" to GuardPrefs.threshold(this), "pkg" to pkg),
+                object : MethodChannel.Result {
+                    override fun success(result: Any?) {
+                        if (!isFresh(g)) {
+                            Log.i(TAG, "نتيجة متأخرة تُهمل — عدّاد التوليد/المهلة (السؤال 3)")
+                            return
+                        }
+                        val unsafe = (result as? Map<*, *>)?.get("unsafe") as? Boolean ?: false
+                        if (unsafe) {
+                            GuardPrefs.incrementBlocked(this@GuardAccessibilityService, pkg)
+                            OverlayController.show(this@GuardAccessibilityService)
+                        }
+                    }
+
+                    override fun error(code: String, msg: String?, details: Any?) {
+                        Log.w(TAG, "خطأ كشف: $code / $msg")
+                    }
+
+                    override fun notImplemented() {
+                        Log.w(TAG, "قناة الكشف غير مهيأة بعد")
+                    }
+                }
+            )
+    }
+
+    /** هل ما تزال نتيجة هذا التوليد صالحة؟ (لم يحصل حدث أحدث ولم تُعد مهلة 5 ثوانٍ) */
+    private fun isFresh(g: Int): Boolean =
+        g == deadlineGen && System.currentTimeMillis() <= deadlineAt
+
+    private fun ensureEngine(): FlutterEngine? {
+        engine?.let { return it }
+        return try {
+            val loader = FlutterInjector.instance().flutterLoader()
+            loader.startInitialization(applicationContext)
+            loader.ensureInitializationComplete(applicationContext, null)
+            val entrypoint = DartEntrypoint.create(loader.findAppBundlePath(), "guardMain")
+            val eng = FlutterEngineGroup(applicationContext)
+                .createAndRunEngine(applicationContext, entrypoint)
+            engine = eng
+            eng
+        } catch (t: Throwable) {
+            Log.e(TAG, "تعذر تشغيل محرك الكشف: ${t.message}")
+            null
+        }
+    }
+}

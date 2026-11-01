@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">غَضّ</string>
+    <string name="accessibility_description">تقرأ هذه الخدمة إشعارات تغيّر محتوى الشاشة وتلتقط لقطة للتحليل المحلي فقط، لطمس المحتوى غير الآمن. لا تُرسل أي بيانات خارج الجهاز — التطبيق بلا صلاحية إنترنت إطلاقًا.</string>
+    <string name="guard_notification_title">الحماية البصرية نشطة</string>
+    <string name="guard_notification_text">التحليل يجري على الجهاز بالكامل — لا اتصال بالشبكة</string>
+    <string name="overlay_title">تم طمس محتوى غير آمن</string>
+    <string name="overlay_hint">انقر لإخفاء الرسالة</string>
+</resources>

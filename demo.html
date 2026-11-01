@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>محاكاة غَضّ — سلوك التغطية والعدادات</title>
+<style>
+  :root{ --navy:#0a1a2e; --navy2:#12263f; --teal:#3fb6c9; --teald:#1d7f96; --page:#f5f8fc;
+         --border:#c5d4e4; --text:#14283e; --muted:#52708c; }
+  *{ box-sizing:border-box; font-family:'Segoe UI', Tahoma, Arial, sans-serif; }
+  body{ margin:0; background:linear-gradient(160deg,var(--navy),var(--navy2)); min-height:100vh;
+        display:flex; align-items:center; justify-content:center; gap:48px; padding:32px; flex-wrap:wrap; }
+  .intro{ color:#a8bfd4; max-width:340px; }
+  .intro h1{ color:#e8f0f8; font-size:22px; }
+  .intro p{ line-height:2; font-size:14.5px; }
+  .intro .tag{ color:var(--teal); font-weight:bold; }
+  .phone{ width:320px; height:640px; background:var(--page); border-radius:34px; border:10px solid #22344c;
+          position:relative; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .bar{ background:var(--navy); color:#e8f0f8; padding:14px 16px; font-weight:bold; font-size:14px; }
+  .feed{ padding:12px; display:flex; flex-direction:column; gap:12px; }
+  .post{ background:#fff; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .post .head{ padding:8px 12px; font-size:11.5px; color:var(--muted); display:flex; justify-content:space-between; }
+  .media{ height:150px; position:relative; }
+  .m1{ background:linear-gradient(120deg,#dce8f2,#b8d0e2); }
+  .m2{ background:repeating-linear-gradient(45deg,#3a2c30 0 18px,#4a3438 18px 36px); }
+  .m3{ background:linear-gradient(120deg,#e3f2f6,#c9e6ee); }
+  .lbl{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+        color:#52708c; font-size:12px; }
+  .overlay{ position:absolute; inset:0; background:rgba(10,26,46,.94); backdrop-filter:blur(14px);
+            display:none; flex-direction:column; align-items:center; justify-content:center;
+            color:#e8f0f8; text-align:center; z-index:5; }
+  .overlay.show{ display:flex; animation:fade .35s ease; }
+  @keyframes fade{ from{opacity:0} to{opacity:1} }
+  .overlay .t{ font-size:18px; font-weight:800; }
+  .overlay .s{ color:#7a9bb8; font-size:12px; margin-top:10px; }
+  .overlay .score{ margin-top:14px; background:rgba(63,182,201,.15); border:1px solid var(--teal);
+                   color:var(--teal); padding:6px 14px; border-radius:8px; font-size:12.5px; }
+  .toast{ position:absolute; bottom:16px; right:16px; left:16px; background:var(--navy2); color:#dce8f2;
+          font-size:11.5px; padding:9px 12px; border-radius:8px; display:none; z-index:6; }
+  .controls{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:18px;
+             width:320px; color:var(--text); }
+  .controls h2{ margin:0 0 6px; font-size:16px; color:var(--navy2); }
+  .controls p{ font-size:12px; color:var(--muted); line-height:1.9; margin:0 0 14px; }
+  .row{ display:flex; align-items:center; justify-content:space-between; margin:12px 0; font-size:13px; }
+  input[type=range]{ width:100%; accent-color:var(--teald); }
+  button{ background:var(--teald); color:#fff; border:0; border-radius:8px; padding:10px 14px;
+          font-size:13px; cursor:pointer; width:100%; margin-top:8px; }
+  button:hover{ filter:brightness(1.08); }
+  .stats{ display:flex; gap:10px; margin-top:12px; }
+  .stat{ flex:1; background:var(--page); border:1px solid var(--border); border-radius:8px;
+         text-align:center; padding:9px 4px; }
+  .stat b{ display:block; font-size:18px; color:var(--teald); }
+  .stat span{ font-size:10.5px; color:var(--muted); }
+  .note{ font-size:10.5px; color:var(--muted); margin-top:12px; line-height:1.8; }
+</style>
+</head>
+<body>
+
+<div class="intro">
+  <h1>محاكاة سلوك النموذج الأولي</h1>
+  <p>هذه المحاكاة تعرض <span class="tag">تجربة الاستخدام فقط</span> من دون أي كشف حقيقي:
+     عند وصول «مشاركة جديدة» تعمل المحاكاة كما يعمل التطبيق — تخفيض تردد، ثم تحليل محلي وهمي،
+     ثم تغطية كاملة النافذة عند تجاوز العتبة، مع عدّ المحلي.</p>
+  <p>المحتوى الظاهر <span class="tag">تمثيلي مجرد</span> (أشكال هندسية لا صور)،
+     ومحرك الكشف الفعلي في التطبيق هو <span class="tag">nsfw_detect</span> على الجهاز بالكامل —
+     بلا صلاحية إنترنت.</p>
+</div>
+
+<div class="phone">
+  <div class="bar">غَضّ — حماية نشطة</div>
+  <div class="feed" id="feed">
+    <div class="post"><div class="head"><span>مدونة تقنية</span><span>آمن</span></div><div class="media m3"><div class="lbl">صورة معمارية تمثيلية</div></div></div>
+    <div class="post"><div class="head"><span>أخبار</span><span>آمن</span></div><div class="media m1"><div class="lbl">صورة مقال تمثيلية</div></div></div>
+  </div>
+  <div class="overlay" id="overlay">
+    <div class="t">تم طمس محتوى غير آمن</div>
+    <div class="s">التحليل تم على الجهاز بالكامل — لا شيء غادر الهاتف</div>
+    <div class="score" id="scoreTag">الثقة: —</div>
+    <div class="s">انقر في أي مكان للاستئناف (محاكاة)</div>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<div class="controls">
+  <h2>لوحة التجربة</h2>
+  <p>حرّك العتبة ثم ادفع مشاركة تجريبية. كل مشاركة تحاكي مسار الحدث الوارد في القسم 4.3 من الوثيقة.</p>
+  <div class="row"><span>عتبة الثقة</span><b id="thVal">0.70</b></div>
+  <input type="range" id="th" min="0.5" max="0.85" step="0.05" value="0.7">
+  <div class="row"><span>احتمال أن تكون المشاركة القادمة «غير آمنة»</span><b id="riskVal">50%</b></div>
+  <input type="range" id="risk" min="0" max="100" step="10" value="50">
+  <button id="push">ادفع مشاركة تجريبية</button>
+  <button id="auto" style="background:var(--navy2)">تشغيل تتابع تلقائي (10 مشاركات)</button>
+  <div class="stats">
+    <div class="stat"><b id="cToday">0</b><span>طمسات اليوم</span></div>
+    <div class="stat"><b id="cTotal">0</b><span>الإجمالي</span></div>
+    <div class="stat"><b id="cLatency">—</b><span>زمن الاستجابة</span></div>
+  </div>
+  <div class="note">الزمن المعروض محاكاة لمسار: حدث ← Debounce 400ms ← لقطة ← استدلال ← تغطية.
+      الهدف الفعلي الموثق في الوثيقة: أقل من ثانيتين من ظهور المحتوى إلى التغطية.</div>
+</div>
+
+<script>
+const th=document.getElementById('th'), thVal=document.getElementById('thVal');
+const risk=document.getElementById('risk'), riskVal=document.getElementById('riskVal');
+const feed=document.getElementById('feed'), overlay=document.getElementById('overlay');
+const scoreTag=document.getElementById('scoreTag'), toast=document.getElementById('toast');
+let today=0, total=0;
+
+th.oninput=()=> thVal.textContent=(+th.value).toFixed(2);
+risk.oninput=()=> riskVal.textContent=risk.value+'%';
+
+function toastMsg(t){ toast.textContent=t; toast.style.display='block';
+  setTimeout(()=>toast.style.display='none',2200); }
+
+function pushPost(unsafe){
+  const t0=performance.now();
+  const post=document.createElement('div'); post.className='post';
+  post.innerHTML='<div class="head"><span>مصدر تجريبي</span><span>قيد التحليل…</span></div>'+
+    '<div class="media '+(unsafe?'m2':'m1')+'"><div class="lbl">محتوى تمثيلي مجرد</div></div>';
+  feed.prepend(post);
+  setTimeout(()=>{
+    // استدلال وهمي: درجة أعلى من العتبة عند unsafe
+    const score=unsafe ? (+(th.value)+0.05+Math.random()*0.1) : (Math.random()*(+th.value)*0.85);
+    const blocked=score>=(+th.value);
+    post.querySelector('.head span:last-child').textContent=blocked?'طُمس':'آمن';
+    if(blocked){
+      today++; total++;
+      scoreTag.textContent='الثقة: '+score.toFixed(2)+' ≥ العتبة '+(+th.value).toFixed(2);
+      overlay.classList.add('show');
+      setTimeout(()=>overlay.classList.remove('show'),2600);
+    }
+    document.getElementById('cToday').textContent=today;
+    document.getElementById('cTotal').textContent=total;
+    document.getElementById('cLatency').textContent=Math.round(performance.now()-t0)+'ms';
+  }, 400+Math.random()*350); // محاكاة debounce+استدلال
+}
+
+document.getElementById('push').onclick=()=>pushPost(Math.random()*100 < +risk.value);
+document.getElementById('auto').onclick=()=>{
+  let i=0; const iv=setInterval(()=>{
+    pushPost(Math.random()*100 < +risk.value);
+    if(++i>=10) clearInterval(iv);
+  },900);
+};
+overlay.onclick=()=>overlay.classList.remove('show');
+</script>
+</body>
+</html>
