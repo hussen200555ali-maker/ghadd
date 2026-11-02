@@ -2,13 +2,29 @@
      للمنتج (القسم 4.4 من دراسة الجدوى). أي صلاحية شبكة تُضاف مستقبلًا تُعد انحرافًا عن
      قرار التصميم المثبت في الوثيقة. يمكن فحص الـAPK النهائي بأمر:
      aapt dump badging app-release.apk | grep uses-permission -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- الصلاحيات الخمس الموثقة في PRIVACY.md — القائمة الكاملة والحصرية -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- سحق صلاحيات مكتبة الكشف عند الدمج (manifest merger): الحزمة nsfw_detect
+         تعلن 7 صلاحيات لخدمات لا نستخدمها إطلاقًا (قارئ الملفات، الكاميرا، التقارير
+         بالشبكة) — ونحن نغذي المحرك بايتات JPEG في الذاكرة مباشرة (scanBytes).
+         tools:node="remove" يمنع أي منها من الوصول إلى الـAPK النهائي،
+         والبوابة الثانية في CI تتحقق من ذلك بحرفية عبر aapt2. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
 
     <application
         android:label="غَضّ"
