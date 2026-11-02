@@ -31,4 +31,4 @@ flutter {
     source = "../.."
 }
 
-// ملاحظة: kotlin-stdlib يأتي تلقائيًا من إصدار Kotlin في settings.gradle (2.1.0)
+// ملاحظة: kotlin-stdlib يأتي تلقائيًا من إصدار Kotlin في settings.gradle (2.2.20)
