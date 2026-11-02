@@ -35,13 +35,36 @@ git push -u origin main
 
 ## بعد الدفع مباشرة
 
-1. افتح تبويب **Actions** — ستعمل بوابات CI الثلاث تلقائيًا:
+1. افتح تبويب **Actions** — ستعمل بوابات CI تلقائيًا:
    - البوابة 1: بناء + تحليل + اختبارات.
    - البوابة 2: رفض `INTERNET` عبر aapt2 + مطابقة الصلاحيات الخمس.
-2. أنشئ أول PR إن أردت تدفق العمل الكامل:
-   ```bash
-   git checkout -b feat/poc-1
-   git push -u origin feat/poc-1
-   ```
-   ثم استخدم نص `docs/PR-1.md` جاهزًا في وصف الـPR.
-3. أنشئ Milestones أ3–أ8 من `docs/MILESTONES.md`.
+
+## كيف تحصل على ملف APK (بلا أي أدوات على جهازك)
+
+1. افتح تبويب **Actions** في المستودع → اضغط على آخر run ناجح (✓).
+2. انزل إلى قسم **Artifacts** أسفل الصفحة → نزّل **ghadd-release-apk**.
+3. هذا ملف `app-release.apk` بنسخة الإصدار — خرج **فقط** بعد اجتياز بوابة aapt2،
+   أي أنه مضمون: بلا صلاحية إنترنت، وبخمس صلاحيات موثقة حرفيًا.
+4. يمكنك إعادة التوليد متى شئت من زر **Run workflow** (workflow_dispatch).
+
+> ملاحظة: بناء `--debug` يضيف صلاحية INTERNET تلقائيًا من أدوات Flutter، لذا الملف
+> المُصدَّر دائمًا هو بناء `--release` — نفس ما سيستخدمه المستخدم النهائي.
+
+## إصدار موسوم (اختياري — يُرفق الـAPK بصفحة Releases تلقائيًا)
+
+```bash
+git tag v0.1.0-alpha
+git push origin v0.1.0-alpha
+```
+
+سيعمل سير العمل على الوسم، وعند نجاح البوابتين يُرفق `app-release.apk`
+مباشرة في صفحة **Releases** بالوسم نفسه.
+
+## أول PR إن أردت تدفق العمل الكامل
+
+```bash
+git checkout -b feat/poc-1
+git push -u origin feat/poc-1
+```
+
+ثم استخدم نص `docs/PR-1.md` جاهزًا في وصف الـPR، وأنشئ Milestones أ3–أ8 من `docs/MILESTONES.md`.

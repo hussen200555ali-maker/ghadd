@@ -1,12 +1,14 @@
-name: CI — بوابات غَضّ الثلاث
+name: CI — بوابات غَضّ الثلاث + تصدير الـAPK
 
 # البوابة 1: بناء + تحليل + اختبارات وحدة
 # البوابة 2: رفض أي صلاحية شبكة في الـAPK عبر aapt2 + مطابقة القائمة البيضاء الخمس
+# المُخرج: app-release.apk يُرفع كـArtifact قابل للتنزيل — وفقط بعد اجتياز بوابة الصلاحيات
 # (مبنية على الصفحة 13 من وثيقة الردّ التقني — الخطوة 3)
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -96,3 +98,29 @@ jobs:
             exit 1
           fi
           echo "البوابة 2: PASS — 5 صلاحيات موثقة فقط، ولا إنترنت إطلاقًا."
+
+      # الـAPK لا يُصدَّر إلا بعد اجتياز بوابة aapt2 — كل ملف APK يخرج من هنا مُصرّحًا
+      - name: تصدير الـAPK المُصرّح به كعنصر قابل للتنزيل
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghadd-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  release:
+    name: "إرفاق الـAPK بالإصدار عند الوسم v*"
+    runs-on: ubuntu-latest
+    needs: no-internet-gate
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: تنزيل الـAPK الذي اجتاز البوابتين
+        uses: actions/download-artifact@v4
+        with:
+          name: ghadd-release-apk
+
+      - name: إرفاق الـAPK بصفحة Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app-release.apk
