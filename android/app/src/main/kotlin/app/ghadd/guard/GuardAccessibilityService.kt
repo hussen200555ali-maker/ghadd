@@ -7,11 +7,12 @@ import android.hardware.HardwareBuffer
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineGroup
-import io.flutter.embedding.engine.dart.DartEntrypoint
+import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
@@ -102,14 +103,21 @@ class GuardAccessibilityService : AccessibilityService() {
         // takeScreenshot متاح في خدمة إمكانية الوصول من API 30 (أدنى نسخة مدعومة هنا).
         // تطبيقات FLAG_SECURE ترفض الالتقاط هنا ببساطة (خطأ/فراغ) — لا يُنشأ كائن أصلًا
         // ولا يُزاد أي عدّاد محجوب؛ سلوك «الاحترام الفوري» في السؤال 4 من وثيقة الردّ.
+        // التوقيع الرسمي: takeScreenshot(displayId, executor, callback) — API 30+
+        // وTakeScreenshotCallback واجهة بلا مُنشئ: onScreenshotCaptured/onScreenshotFailed.
         svc.takeScreenshot(
+            Display.DEFAULT_DISPLAY,
             screenshotExecutor,
-            object : TakeScreenshotCallback() {
-                override fun onCapturedScreenshot(result: ScreenshotResult?) {
-                    if (result == null || g != generation) return // نتيجة متخلفة — تُهمل
+            object : TakeScreenshotCallback {
+                override fun onScreenshotCaptured(result: ScreenshotResult) {
+                    if (g != generation) return // نتيجة متخلفة — تُهمل
                     val jpeg = toJpegInMemory(result.hardwareBuffer, result.colorSpace)
                     if (jpeg == null || g != generation) return
                     mainHandler.post { askDart(jpeg, g) }
+                }
+
+                override fun onScreenshotFailed(errorCode: Int) {
+                    Log.w(TAG, "فشل الالتقاط — رمز $errorCode (تطبيقات FLAG_SECURE ترفض ببساطة)")
                 }
             }
         )
@@ -179,7 +187,7 @@ class GuardAccessibilityService : AccessibilityService() {
             val loader = FlutterInjector.instance().flutterLoader()
             loader.startInitialization(applicationContext)
             loader.ensureInitializationComplete(applicationContext, null)
-            val entrypoint = DartEntrypoint.create(loader.findAppBundlePath(), "guardMain")
+            val entrypoint = DartExecutor.DartEntrypoint(loader.findAppBundlePath(), "guardMain")
             val eng = FlutterEngineGroup(applicationContext)
                 .createAndRunEngine(applicationContext, entrypoint)
             engine = eng

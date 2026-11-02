@@ -60,8 +60,8 @@ object GuardPrefs {
         return mapOf(
             "blocked_total" to p.getInt("blocked_total", 0),
             "blocked_today" to p.getInt("blocked_$today", 0),
-            "last_blocked_at" to (p.getString("last_blocked_at") ?: ""),
-            "last_blocked_app" to (p.getString("last_blocked_app") ?: "")
+            "last_blocked_at" to (p.getString("last_blocked_at", null) ?: ""),
+            "last_blocked_app" to (p.getString("last_blocked_app", null) ?: "")
         )
     }
 }
