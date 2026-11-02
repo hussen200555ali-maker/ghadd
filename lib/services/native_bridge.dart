@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 import 'package:nsfw_detect/nsfw_detect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -67,19 +65,19 @@ class GuardSystem {
   static const _channel = MethodChannel('ghadd/system');
 
   static Future<void> startGuard() async {
-    try { await _channel.invokeMethod('startGuard'); } on PlatformException {}
+    try { await _channel.invokeMethod('startGuard'); } on PlatformException {/* تجاهل مقصود — القناة الأصلية غير متاحة في بيئات الاختبار */}
   }
 
   static Future<void> stopGuard() async {
-    try { await _channel.invokeMethod('stopGuard'); } on PlatformException {}
+    try { await _channel.invokeMethod('stopGuard'); } on PlatformException {/* تجاهل مقصود — القناة الأصلية غير متاحة في بيئات الاختبار */}
   }
 
   static Future<void> openAccessibilitySettings() async {
-    try { await _channel.invokeMethod('openAccessibilitySettings'); } on PlatformException {}
+    try { await _channel.invokeMethod('openAccessibilitySettings'); } on PlatformException {/* تجاهل مقصود — القناة الأصلية غير متاحة في بيئات الاختبار */}
   }
 
   static Future<void> openOverlaySettings() async {
-    try { await _channel.invokeMethod('openOverlaySettings'); } on PlatformException {}
+    try { await _channel.invokeMethod('openOverlaySettings'); } on PlatformException {/* تجاهل مقصود — القناة الأصلية غير متاحة في بيئات الاختبار */}
   }
 }
 

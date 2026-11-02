@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app.dart';
 import '../services/native_bridge.dart';
+import 'settings_screen.dart';
 
 /// الشاشة الرئيسية: معالج إعداد من ثلاث خطوات + مفتاح الحماية + عدادات محلية.
 class HomeScreen extends StatefulWidget {
@@ -44,10 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showSetupHint() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      const SnackBar(
         backgroundColor: GuardTheme.navy2,
-        content: const Text('أكمل خطوتي الإعداد أولًا: خدمة الوصول ثم العرض فوق التطبيقات.'),
-        duration: const Duration(seconds: 3),
+        content: Text('أكمل خطوتي الإعداد أولًا: خدمة الوصول ثم العرض فوق التطبيقات.'),
+        duration: Duration(seconds: 3),
       ),
     );
   }
@@ -95,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 18),
             Card(
               child: SwitchListTile(
-                activeColor: GuardTheme.tealDeep,
+                activeThumbColor: GuardTheme.tealDeep,
                 title: const Text('الحماية الآن',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(
@@ -123,10 +124,10 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(color: GuardTheme.muted, fontSize: 12.5),
             ),
             const SizedBox(height: 22),
-            Text(
+            const Text(
               'أذونات هذا التطبيق لا تشمل صلاحية INTERNET إطلاقًا — '
               'افحص بنفسك: aapt dump badging app-release.apk | grep uses-permission',
-              style: const TextStyle(color: GuardTheme.tealDeep, fontSize: 12),
+              style: TextStyle(color: GuardTheme.tealDeep, fontSize: 12),
               textAlign: TextAlign.center,
             ),
           ],

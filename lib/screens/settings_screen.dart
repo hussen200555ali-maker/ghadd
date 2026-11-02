@@ -29,7 +29,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await GuardSettings.sync();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: GuardTheme.navy2, content: const Text('حُفظت الإعدادات محليًا')),
+        const SnackBar(backgroundColor: GuardTheme.navy2, content: Text('حُفظت الإعدادات محليًا')),
       );
     }
   }
@@ -70,7 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(
                   child: TextField(
                     controller: _pkgCtrl,
-                    direction: TextDirection.ltr,
+                    textDirection: TextDirection.ltr,
                     decoration: const InputDecoration(
                       hintText: 'com.example.app',
                       border: OutlineInputBorder(),

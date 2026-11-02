@@ -34,7 +34,7 @@ class GuardTheme {
         foregroundColor: Color(0xFFE8F0F8),
         centerTitle: true,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(
