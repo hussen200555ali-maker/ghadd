@@ -79,6 +79,27 @@ class GuardSystem {
   static Future<void> openOverlaySettings() async {
     try { await _channel.invokeMethod('openOverlaySettings'); } on PlatformException {/* تجاهل مقصود — القناة الأصلية غير متاحة في بيئات الاختبار */}
   }
+
+  /// حالة مسار الالتقاط البديل (أندرويد 9/10):
+  /// legacy = الجهاز يحتاج تصريح عرض الشاشة، active = التصريح منح والمحرك يعمل الآن.
+  static Future<Map<String, dynamic>> projectionStatus() async {
+    try {
+      final raw = await _channel.invokeMethod('projectionStatus');
+      return Map<String, dynamic>.from(raw as Map);
+    } on PlatformException {
+      return const {'legacy': false, 'active': false};
+    } on MissingPluginException {
+      return const {'legacy': false, 'active': false};
+    }
+  }
+
+  /// يفتح حوار تصريح عرض الشاشة (حوار النظام نفسه) وعند المنح
+  /// تبدأ الخدمة الأمامية وتُشغّل محرك الالتقاط البديل.
+  static Future<void> startProjection() async {
+    try {
+      await _channel.invokeMethod('startProjection');
+    } on PlatformException {/* تجاهل مقصود — القناة الأصلية غير متاحة في بيئات الاختبار */}
+  }
 }
 
 /// قناة الكشف: تستقبل نداءات الخدمة الأصلية (analyze) وتنفذها محليًا.

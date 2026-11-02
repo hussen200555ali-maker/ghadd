@@ -19,11 +19,12 @@ android {
 
     defaultConfig {
         applicationId = "app.ghadd.guard"
-        // takeScreenshot عبر خدمة إمكانية الوصول متاح من API 30 (القسم 4.6 من الوثيقة)
-        minSdk = 30
+        // أدنى إصدار مدعوم: أندرويد 9 (API 28) — عبر مسار الالتقاط البديل
+        // (MediaProjection)؛ أما أندرويد 11+ فيستخدم takeScreenshot الرسمي.
+        minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {

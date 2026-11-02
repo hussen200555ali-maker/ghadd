@@ -2,7 +2,7 @@ name: CI — بوابات غَضّ الثلاث + تصدير الـAPK
 
 # البوابة 1: بناء + تحليل + اختبارات وحدة
 # البوابة 2: رفض أي صلاحية شبكة في الـAPK عبر aapt2 + مطابقة القائمة البيضاء الموثقة
-# (خمس معلنة في البيان + صلاحيتان نظاميتان تضيفهما سلسلة البناء لكل تطبيقات Flutter الحديثة)
+# (ست معلنة في البيان + صلاحيتان نظاميتان تضيفهما سلسلة البناء لكل تطبيقات Flutter الحديثة)
 # المُخرج: app-release.apk يُرفع كـArtifact قابل للتنزيل — وفقط بعد اجتياز بوابة الصلاحيات
 # (مبنية على الصفحة 13 من وثيقة الردّ التقني — الخطوة 3)
 
@@ -87,6 +87,7 @@ jobs:
 
           {
             echo "uses-permission: name='android.permission.FOREGROUND_SERVICE'"
+            echo "uses-permission: name='android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'"
             echo "uses-permission: name='android.permission.FOREGROUND_SERVICE_SPECIAL_USE'"
             echo "uses-permission: name='android.permission.POST_NOTIFICATIONS'"
             echo "uses-permission: name='android.permission.RECEIVE_BOOT_COMPLETED'"
@@ -102,7 +103,7 @@ jobs:
             echo "::error::قائمة الصلاحيات اختلفت عن القائمة البيضاء الموثقة في PRIVACY.md!"
             exit 1
           fi
-          echo "البوابة 2: PASS — 7 صلاحيات (5 معلنة + 2 نظاميتان من سلسلة البناء)، ولا إنترنت إطلاقًا."
+          echo "البوابة 2: PASS — 8 صلاحيات (6 معلنة + 2 نظاميتان من سلسلة البناء)، ولا إنترنت إطلاقًا."
 
       # الـAPK لا يُصدَّر إلا بعد اجتياز بوابة aapt2 — كل ملف APK يخرج من هنا مُصرّحًا
       - name: تصدير الـAPK المُصرّح به كعنصر قابل للتنزيل

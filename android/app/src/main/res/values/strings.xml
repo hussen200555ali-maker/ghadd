@@ -4,6 +4,7 @@
     <string name="accessibility_description">تقرأ هذه الخدمة إشعارات تغيّر محتوى الشاشة وتلتقط لقطة للتحليل المحلي فقط، لطمس المحتوى غير الآمن. لا تُرسل أي بيانات خارج الجهاز — التطبيق بلا صلاحية إنترنت إطلاقًا.</string>
     <string name="guard_notification_title">الحماية البصرية نشطة</string>
     <string name="guard_notification_text">التحليل يجري على الجهاز بالكامل — لا اتصال بالشبكة</string>
+    <string name="projection_notification_text">مسار الالتقاط البديل نشط (أندرويد 9/10) — التصريح في الذاكرة فقط ولا شيء يغادر الجهاز</string>
     <string name="overlay_title">تم طمس محتوى غير آمن</string>
     <string name="overlay_hint">انقر لإخفاء الرسالة</string>
 </resources>

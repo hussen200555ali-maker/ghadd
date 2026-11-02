@@ -1,8 +1,11 @@
 package app.ghadd.guard
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -15,12 +18,16 @@ import io.flutter.plugin.common.MethodChannel
 /**
  * واجهة Flutter الرئيسية + قناتان:
  *  - ghadd/control: تزامن الإعدادات (وموافقة الإفصاح) مع المرآة الأصلية GuardPrefs.
- *  - ghadd/system:  إطلاق شاشات منح الصلاحيات وبدء/إيقاف الخدمة الدائمة.
+ *  - ghadd/system:  إطلاق شاشات منح الصلاحيات وبدء/إيقاف الخدمة الدائمة،
+ *                   وعلى أندرويد 9/10: حوار تصريح عرض الشاشة (مسار الالتقاط البديل).
  */
 class MainActivity : FlutterActivity() {
 
     private val settingsChannel = "ghadd/control"
     private val systemChannel = "ghadd/system"
+
+    /** رمز طلب حوار تصريح عرض الشاشة (MediaProjection). */
+    private val reqProjection = 777
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -77,8 +84,41 @@ class MainActivity : FlutterActivity() {
                         )
                         result.success(true)
                     }
+                    "startProjection" -> {
+                        // أندرويد 9/10 فقط: فتح حوار تصريح العرض (حوار النظام نفسه)
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            result.success(mapOf("legacy" to false, "active" to false))
+                        } else {
+                            try {
+                                val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                                    as MediaProjectionManager
+                                startActivityForResult(mpm.createScreenCaptureIntent(), reqProjection)
+                                result.success(mapOf("legacy" to true, "active" to ProjectionCaptureEngine.isReady))
+                            } catch (t: Throwable) {
+                                result.success(mapOf("legacy" to true, "active" to false))
+                            }
+                        }
+                    }
+                    "projectionStatus" -> result.success(
+                        mapOf(
+                            "legacy" to (Build.VERSION.SDK_INT < 30),
+                            "active" to ProjectionCaptureEngine.isReady
+                        )
+                    )
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /** نتيجة حوار تصريح العرض: عند المنح تبدأ الخدمة الأمامية ثم محرك الالتقاط. */
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == reqProjection) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                ProjectionService.start(this, resultCode, data)
+            }
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 }

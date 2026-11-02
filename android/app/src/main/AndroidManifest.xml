@@ -5,10 +5,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- الصلاحيات الخمس الموثقة في PRIVACY.md — القائمة الكاملة والحصرية -->
+    <!-- الصلاحيات الست الموثقة في PRIVACY.md — القائمة الكاملة والحصرية -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- تصنيف خدمة مسار الالتقاط البديل (أندرويد 9/10) — شرط نظامي للنوع mediaProjection -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -72,6 +74,14 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="on_device_visual_protection_no_network" />
         </service>
+
+        <!-- مسار الالتقاط البديل (أندرويد 9/10 فقط): خدمة بنوع mediaProjection —
+             تصريح العرض يمنحه النظام بحواره الصريح، يعيش في الذاكرة فقط،
+             ويُطلب مجددًا بعد كل إقلاع (سلوك النظام — لا يُخزّن إطلاقًا) -->
+        <service
+            android:name=".ProjectionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <meta-data
             android:name="flutterEmbedding"

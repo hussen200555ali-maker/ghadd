@@ -16,6 +16,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _accessibilityOk = false;
   bool _overlayOk = false;
   Map<String, dynamic> _stats = const {};
+  // حالة مسار الالتقاط البديل (أندرويد 9/10) — legacy=true تعني ظهور بطاقة التصريح
+  bool _legacyAndroid = false;
+  bool _projectionActive = false;
 
   @override
   void initState() {
@@ -25,12 +28,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _refresh() async {
     _stats = await GuardSettings.stats();
+    final proj = await GuardSystem.projectionStatus();
+    _legacyAndroid = proj['legacy'] == true;
+    _projectionActive = proj['active'] == true;
     if (mounted) setState(() {});
   }
 
   Future<void> _toggleProtection(bool value) async {
     if (value && (!_accessibilityOk || !_overlayOk)) {
       _showSetupHint();
+      return;
+    }
+    if (value && _legacyAndroid && !_projectionActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: GuardTheme.navy2,
+          content: Text('أكمل تفعيل تصريح عرض الشاشة أولًا (خطوة أندرويد 9/10).'),
+          duration: Duration(seconds: 3),
+        ),
+      );
       return;
     }
     setState(() => GuardSettings.enabled = value);
@@ -83,6 +99,47 @@ class _HomeScreenState extends State<HomeScreen> {
                 setState(() => _overlayOk = true);
               },
             ),
+            // بطاقة أندرويد 9/10 حصرًا: تصريح عرض الشاشة لمسار الالتقاط البديل
+            if (_legacyAndroid) ...[
+              const SizedBox(height: 10),
+              Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: _projectionActive
+                        ? GuardTheme.tealDeep
+                        : GuardTheme.card,
+                    foregroundColor: _projectionActive
+                        ? Colors.white
+                        : GuardTheme.muted,
+                    child: Icon(_projectionActive
+                        ? Icons.check
+                        : Icons.screen_share),
+                  ),
+                  title: const Text('تفعيل تصريح عرض الشاشة',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text(
+                    'أندرويد 9/10 يحتاج تصريح عرض من النظام لالتقاط اللقطات '
+                    '(المسار البديل عن takeScreenshot). الحوار من النظام نفسه، '
+                    'ويعاد تأكيده بعد كل إقلاع للجهاز — التصريح في الذاكرة فقط.',
+                    style: TextStyle(fontSize: 12.5),
+                  ),
+                  trailing: TextButton(
+                    onPressed: () async {
+                      await GuardSystem.startProjection();
+                      // المحرك يبدأ بعد إغلاق الحوار بجزء من الثانية — نحدّث بعدها
+                      await Future<void>.delayed(const Duration(milliseconds: 900));
+                      final proj = await GuardSystem.projectionStatus();
+                      if (!mounted) return;
+                      setState(() {
+                        _legacyAndroid = proj['legacy'] == true;
+                        _projectionActive = proj['active'] == true;
+                      });
+                    },
+                    child: Text(_projectionActive ? 'إعادة تأكيد' : 'تفعيل'),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             _setupCard(
               step: 3,

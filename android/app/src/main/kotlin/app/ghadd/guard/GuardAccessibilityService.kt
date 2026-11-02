@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.graphics.ColorSpace
 import android.hardware.HardwareBuffer
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -100,27 +101,37 @@ class GuardAccessibilityService : AccessibilityService() {
         if (!GuardPrefs.canGuard(this)) return
 
         val g = ++generation
-        // takeScreenshot متاح في خدمة إمكانية الوصول من API 30 (أدنى نسخة مدعومة هنا).
-        // تطبيقات FLAG_SECURE ترفض الالتقاط هنا ببساطة (خطأ/فراغ) — لا يُنشأ كائن أصلًا
-        // ولا يُزاد أي عدّاد محجوب؛ سلوك «الاحترام الفوري» في السؤال 4 من وثيقة الردّ.
-        // التوقيع الرسمي (compileSdk 34): takeScreenshot(displayId, executor, callback)
-        // والواجهة TakeScreenshotCallback بلا مُنشئ: onSuccess(ScreenshotResult) / onFailure(Int).
-        svc.takeScreenshot(
-            Display.DEFAULT_DISPLAY,
-            screenshotExecutor,
-            object : TakeScreenshotCallback {
-                override fun onSuccess(result: ScreenshotResult) {
-                    if (g != generation) return // نتيجة متخلفة — تُهمل
-                    val jpeg = toJpegInMemory(result.hardwareBuffer, result.colorSpace)
-                    if (jpeg == null || g != generation) return
-                    mainHandler.post { askDart(jpeg, g) }
-                }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // المسار الأساسي (أندرويد 11+): takeScreenshot الرسمي لخدمة إمكانية الوصول.
+            // تطبيقات FLAG_SECURE ترفض الالتقاط هنا ببساطة (خطأ/فراغ) — لا يُنشأ كائن أصلًا
+            // ولا يُزاد أي عدّاد محجوب؛ سلوك «الاحترام الفوري» في السؤال 4 من وثيقة الردّ.
+            // التوقيع الرسمي (compileSdk 34): takeScreenshot(displayId, executor, callback)
+            // والواجهة TakeScreenshotCallback بلا مُنشئ: onSuccess(ScreenshotResult) / onFailure(Int).
+            svc.takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                screenshotExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(result: ScreenshotResult) {
+                        if (g != generation) return // نتيجة متخلفة — تُهمل
+                        val jpeg = toJpegInMemory(result.hardwareBuffer, result.colorSpace)
+                        if (jpeg == null || g != generation) return
+                        mainHandler.post { askDart(jpeg, g) }
+                    }
 
-                override fun onFailure(errorCode: Int) {
-                    Log.w(TAG, "فشل الالتقاط — رمز $errorCode (تطبيقات FLAG_SECURE ترفض ببساطة)")
+                    override fun onFailure(errorCode: Int) {
+                        Log.w(TAG, "فشل الالتقاط — رمز $errorCode (تطبيقات FLAG_SECURE ترفض ببساطة)")
+                    }
                 }
+            )
+        } else {
+            // المسار البديل (أندرويد 9/10): محرك MediaProjection — نفس عقد دورة الحياة
+            // (RAM فقط، بلا ملف وسيط) ونفس حراسة التوليد والمهلة، ونتائجه تمر إلى askDart مباشرة.
+            // إن لم يمنح المستخدم تصريح العرض بعد فالمحرك غير جاهز → null → لا شيء يحدث.
+            ProjectionCaptureEngine.capture { jpeg ->
+                if (jpeg == null || g != generation) return@capture
+                askDart(jpeg, g)
             }
-        )
+        }
     }
 
     /** HardwareBuffer → JPEG bytes في الذاكرة فقط، مع إغلاق المصدر وتحرير البكسلات فورًا. */

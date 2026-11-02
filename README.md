@@ -19,9 +19,16 @@
 ## البنية (ملخص وثيقة الردّ التقني)
 
 - **Flutter**: الشاشات (الإفصاح، الرئيسية، الإعدادات) + محرك الكشف `nsfw_detect` في محرك خلفي.
-- **Kotlin**: `GuardAccessibilityService` (debounce 400ms + takeScreenshot) · `GuardForegroundService` (START_STICKY) · `OverlayController` · `GuardPrefs`.
+- **Kotlin**: `GuardAccessibilityService` (debounce 400ms + takeScreenshot أو مسار بديل) · `GuardForegroundService` (START_STICKY) · `ProjectionCaptureEngine` + `ProjectionService` (مسار أندرويد 9/10) · `OverlayController` · `GuardPrefs`.
 - **القنوات**: `ghadd/control` (إعدادات وموافقة) · `ghadd/system` (تشغيل/إيقاف ومنح) · `ghadd/analyze` (بايتات اللقطة → قرار).
 - **قاعدة الذيل الأخير**: قرار الحجب يُنفَّذ في Kotlin — الحماية قائمة حتى لو قُتلت واجهة Flutter.
+
+## الإصدارات المدعومة
+
+| إصدار أندرويد | مسار الالتقاط | ملاحظات |
+|---|---|---|
+| 11+ (API 30+) | `takeScreenshot` الرسمي لخدمة الوصول | المسار الأساسي |
+| 9 و10 (API 28/29) | تصريح عرض الشاشة (MediaProjection) | حوار النظام نفسه — الإطارات في الذاكرة فقط، ويُعاد تأكيده بعد كل إقلاع |
 
 ## التشغيل محليًا
 
