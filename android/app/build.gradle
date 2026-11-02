@@ -8,6 +8,15 @@ android {
     namespace = "app.ghadd.guard"
     compileSdk = 34
 
+    // توحيد هدف JVM بين Java وKotlin (شرط KGP 2.2) — JDK 17 في CI
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     defaultConfig {
         applicationId = "app.ghadd.guard"
         // takeScreenshot عبر خدمة إمكانية الوصول متاح من API 30 (القسم 4.6 من الوثيقة)
