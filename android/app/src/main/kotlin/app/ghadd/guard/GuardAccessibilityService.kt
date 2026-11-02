@@ -103,20 +103,20 @@ class GuardAccessibilityService : AccessibilityService() {
         // takeScreenshot متاح في خدمة إمكانية الوصول من API 30 (أدنى نسخة مدعومة هنا).
         // تطبيقات FLAG_SECURE ترفض الالتقاط هنا ببساطة (خطأ/فراغ) — لا يُنشأ كائن أصلًا
         // ولا يُزاد أي عدّاد محجوب؛ سلوك «الاحترام الفوري» في السؤال 4 من وثيقة الردّ.
-        // التوقيع الرسمي: takeScreenshot(displayId, executor, callback) — API 30+
-        // وTakeScreenshotCallback واجهة بلا مُنشئ: onScreenshotCaptured/onScreenshotFailed.
+        // التوقيع الرسمي (compileSdk 34): takeScreenshot(displayId, executor, callback)
+        // والواجهة TakeScreenshotCallback بلا مُنشئ: onSuccess(ScreenshotResult) / onFailure(Int).
         svc.takeScreenshot(
             Display.DEFAULT_DISPLAY,
             screenshotExecutor,
             object : TakeScreenshotCallback {
-                override fun onScreenshotCaptured(result: ScreenshotResult) {
+                override fun onSuccess(result: ScreenshotResult) {
                     if (g != generation) return // نتيجة متخلفة — تُهمل
                     val jpeg = toJpegInMemory(result.hardwareBuffer, result.colorSpace)
                     if (jpeg == null || g != generation) return
                     mainHandler.post { askDart(jpeg, g) }
                 }
 
-                override fun onScreenshotFailed(errorCode: Int) {
+                override fun onFailure(errorCode: Int) {
                     Log.w(TAG, "فشل الالتقاط — رمز $errorCode (تطبيقات FLAG_SECURE ترفض ببساطة)")
                 }
             }
