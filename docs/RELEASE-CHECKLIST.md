@@ -18,7 +18,7 @@ git push origin v0.1.0-alpha
 ثم في GitHub → Releases → **Draft a new release**:
 - Tag: `v0.1.0-alpha`
 - العنوان: `غَضّ v0.1.0-alpha — إثبات الفكرة`
-- الوصف: انسخ قسم «أُضيف» من CHANGELOG.md + جدول الصلاحيات الخمس من PRIVACY.md
+- الوصف: انسخ قسم «أُضيف» من CHANGELOG.md + جدول الصلاحيات (5 معلنة + 2 نظاميتان) من PRIVACY.md
 - أرفق: `app-release.apk` + **ناتج `aapt2 dump badging` في ملف نصي** (دليل الشفافية)
 
 ## التوقيع (قبل أي توزيع خارج التجريب الشخصي)

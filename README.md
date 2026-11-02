@@ -43,15 +43,16 @@ flutter test
 flutter build apk --release
 # ملاحظة: بناء --debug يضيف INTERNET تلقائيًا من أدوات Flutter — افحص الإصدار حصرًا
 aapt2 dump badging build/app/outputs/flutter-apk/app-release.apk | grep uses-permission
-# المتوقع: 5 صلاحيات فقط — ولا INTERNET:
+# المتوقع: 7 صلاحيات (5 معلنة + 2 نظاميتان من سلسلة البناء) — ولا شبكية بينها:
 #   SYSTEM_ALERT_WINDOW · FOREGROUND_SERVICE · FOREGROUND_SERVICE_SPECIAL_USE
-#   POST_NOTIFICATIONS · RECEIVE_BOOT_COMPLETED
+#   POST_NOTIFICATIONS · RECEIVE_BOOT_COMPLETED · WAKE_LOCK · DYNAMIC_RECEIVER_*
+# التفصيل الكامل في PRIVACY.md
 ```
 
 ## بوابات CI الثلاث (تعمل تلقائيًا على كل PR ودفع)
 
 1. **الجودة**: `flutter analyze` + `flutter test` (عقد العتبات والعدادات).
-2. **رفض الإنترنت**: بناء `--release` ثم `aapt2` — فشل فوري عند أي `INTERNET/ACCESS_NETWORK_STATE`، وتطابق حرفي مع القائمة البيضاء الخمس.
+2. **رفض الإنترنت**: بناء `--release` ثم `aapt2` — فشل فوري عند أي `INTERNET/ACCESS_NETWORK_STATE`، وتطابق حرفي مع القائمة البيضاء الموثقة (5 معلنة + 2 نظاميتان).
 3. انظر `.github/workflows/ci.yml` — كل انحراف عن الميثاق يكسر البناء، لا يتسامح معه.
 
 ## هيكل المستودع
@@ -71,14 +72,14 @@ android/.../app/ghadd/guard/
   GuardPrefs.kt                 # مرآة الإعدادات + بوابة الموافقة
 .github/workflows/ci.yml        # البوابات الثلاث
 docs/                           # PR-1 · MILESTONES · RELEASE-CHECKLIST · PUSH
-PRIVACY.md                      # وثيقة الصلاحيات الخمس والوعود
+PRIVACY.md                      # وثيقة الصلاحيات المعلنة والنظاميات والوعود
 ```
 
 ## التوثيق المرافق
 
 - **دراسة الجدوى التأسيسية** (28 صفحة) — خارج هذا المستودع، مرجع الأرقام والمخاطر.
 - **وثيقة الردّ التقني ومخططات الواجهات** (13 صفحة) — أسئلة البنية الخمسة + الويرفريمات.
-- `PRIVACY.md` — الصلاحيات الخمس وسبب كل واحدة، بالجملة القابلة للاقتباس.
+- `PRIVACY.md` — الصلاحيات المعلنة والنظاميات وسبب كل واحدة، بالجملة القابلة للاقتباس.
 - `docs/MILESTONES.md` — حزم الأسابيع الثمانية أ1–أ8 وبوابات إنجازها.
 
 ## خارطة الإصدارات

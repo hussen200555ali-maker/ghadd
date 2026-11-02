@@ -17,11 +17,12 @@ feat(poc): الإفصاح البارز + مسار اللقطة في RAM + بوا
 ## الوعود الثلاثة — وكيف يثبتها هذا PR
 
 ### 1) بلا إنترنت
-- البيان يعلن **5 صلاحيات فقط**: `SYSTEM_ALERT_WINDOW`، `FOREGROUND_SERVICE`،
+- البيان يعلن **5 صلاحيات** فقط: `SYSTEM_ALERT_WINDOW`، `FOREGROUND_SERVICE`،
   `FOREGROUND_SERVICE_SPECIAL_USE`، `POST_NOTIFICATIONS`، `RECEIVE_BOOT_COMPLETED`.
 - بوابة CI (`aapt2 dump badging` على بناء `--release`) ترفض أي
-  `INTERNET/ACCESS_NETWORK_STATE` **وتطابق القائمة الخمس حرفيًا** — أي إضافة صلاحية
-  مستقبلًا تكسر البناء.
+  `INTERNET/ACCESS_NETWORK_STATE` **وتطابق القائمة الموثقة حرفيًا** (الخمس المعلنة
+  + صلاحيتان نظاميتان يضيفهما قالب Flutter/AGP لكل التطبيقات الحديثة — موثقتان في
+  PRIVACY.md) — أي إضافة صلاحية مستقبلًا تكسر البناء.
 - ملاحظة صادقة: بناء `--debug` يضيف INTERNET من أدوات Flutter نفسها (للكشف السريع)،
   لذلك البوابة تُجرى على `--release` حصرًا — موثق في سير العمل.
 
@@ -47,7 +48,7 @@ feat(poc): الإفصاح البارز + مسار اللقطة في RAM + بوا
 - [x] `flutter analyze` نظيف
 - [x] اختبارات عقد العتبات والعدادات (`test/decision_test.dart`)
 - [x] لا صلاحية جديدة في البيان — والبوابة 2 تحرس ذلك
-- [x] `PRIVACY.md` محدث بالصلاحيات الخمس
+- [x] `PRIVACY.md` محدث بالصلاحيات المعلنة والنظاميتان
 - [x] تسمية القنوات موحدة (`ghadd/control` · `ghadd/system` · `ghadd/analyze`)
 - [ ] مراجعة بشرية للتعليقات العربية في الكود (الأسماء والدلالات)
 

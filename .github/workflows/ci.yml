@@ -1,7 +1,8 @@
 name: CI — بوابات غَضّ الثلاث + تصدير الـAPK
 
 # البوابة 1: بناء + تحليل + اختبارات وحدة
-# البوابة 2: رفض أي صلاحية شبكة في الـAPK عبر aapt2 + مطابقة القائمة البيضاء الخمس
+# البوابة 2: رفض أي صلاحية شبكة في الـAPK عبر aapt2 + مطابقة القائمة البيضاء الموثقة
+# (خمس معلنة في البيان + صلاحيتان نظاميتان تضيفهما سلسلة البناء لكل تطبيقات Flutter الحديثة)
 # المُخرج: app-release.apk يُرفع كـArtifact قابل للتنزيل — وفقط بعد اجتياز بوابة الصلاحيات
 # (مبنية على الصفحة 13 من وثيقة الردّ التقني — الخطوة 3)
 
@@ -71,7 +72,7 @@ jobs:
       - name: بناء APK نسخة الإصدار
         run: flutter build apk --release
 
-      - name: رفض أي صلاحية شبكة + مطابقة القائمة البيضاء الخمس
+      - name: رفض أي صلاحية شبكة + مطابقة القائمة البيضاء الموثقة
         run: |
           AAPT2=$(ls -t $ANDROID_HOME/build-tools/*/aapt2 | head -1)
           APK=build/app/outputs/flutter-apk/app-release.apk
@@ -90,14 +91,18 @@ jobs:
             echo "uses-permission: name='android.permission.POST_NOTIFICATIONS'"
             echo "uses-permission: name='android.permission.RECEIVE_BOOT_COMPLETED'"
             echo "uses-permission: name='android.permission.SYSTEM_ALERT_WINDOW'"
+            # الصلاحيتان النظاميتان اللتان تضيفهما سلسلة البناء (قالب Flutter + AGP) لكل تطبيقات
+            # Flutter الحديثة — بلا أي علاقة بالشبكة، وموثقتان في PRIVACY.md:
+            echo "uses-permission: name='android.permission.WAKE_LOCK'"
+            echo "uses-permission: name='app.ghadd.guard.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'"
           } | sort > /tmp/want.txt
           grep -oE "uses-permission: name='[^']+'" /tmp/badging.txt | sort > /tmp/got.txt
 
           if ! diff -u /tmp/want.txt /tmp/got.txt; then
-            echo "::error::قائمة الصلاحيات اختلفت عن القائمة البيضاء الخمس الموثقة في PRIVACY.md!"
+            echo "::error::قائمة الصلاحيات اختلفت عن القائمة البيضاء الموثقة في PRIVACY.md!"
             exit 1
           fi
-          echo "البوابة 2: PASS — 5 صلاحيات موثقة فقط، ولا إنترنت إطلاقًا."
+          echo "البوابة 2: PASS — 7 صلاحيات (5 معلنة + 2 نظاميتان من سلسلة البناء)، ولا إنترنت إطلاقًا."
 
       # الـAPK لا يُصدَّر إلا بعد اجتياز بوابة aapt2 — كل ملف APK يخرج من هنا مُصرّحًا
       - name: تصدير الـAPK المُصرّح به كعنصر قابل للتنزيل
