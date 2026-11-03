@@ -50,16 +50,17 @@ flutter test
 flutter build apk --release
 # ملاحظة: بناء --debug يضيف INTERNET تلقائيًا من أدوات Flutter — افحص الإصدار حصرًا
 aapt2 dump badging build/app/outputs/flutter-apk/app-release.apk | grep uses-permission
-# المتوقع: 7 صلاحيات (5 معلنة + 2 نظاميتان من سلسلة البناء) — ولا شبكية بينها:
+# المتوقع: 9 صلاحيات (7 معلنة + 2 نظاميتان من سلسلة البناء) — ولا شبكية بينها:
 #   SYSTEM_ALERT_WINDOW · FOREGROUND_SERVICE · FOREGROUND_SERVICE_SPECIAL_USE
-#   POST_NOTIFICATIONS · RECEIVE_BOOT_COMPLETED · WAKE_LOCK · DYNAMIC_RECEIVER_*
+#   FOREGROUND_SERVICE_MEDIA_PROJECTION · POST_NOTIFICATIONS · RECEIVE_BOOT_COMPLETED
+#   REQUEST_IGNORE_BATTERY_OPTIMIZATIONS · WAKE_LOCK · DYNAMIC_RECEIVER_*
 # التفصيل الكامل في PRIVACY.md
 ```
 
 ## بوابات CI الثلاث (تعمل تلقائيًا على كل PR ودفع)
 
 1. **الجودة**: `flutter analyze` + `flutter test` (عقد العتبات والعدادات).
-2. **رفض الإنترنت**: بناء `--release` ثم `aapt2` — فشل فوري عند أي `INTERNET/ACCESS_NETWORK_STATE`، وتطابق حرفي مع القائمة البيضاء الموثقة (5 معلنة + 2 نظاميتان).
+2. **رفض الإنترنت**: بناء `--release` ثم `aapt2` — فشل فوري عند أي `INTERNET/ACCESS_NETWORK_STATE`، وتطابق حرفي مع القائمة البيضاء الموثقة (7 معلنة + 2 نظاميتان).
 3. انظر `.github/workflows/ci.yml` — كل انحراف عن الميثاق يكسر البناء، لا يتسامح معه.
 
 ## هيكل المستودع

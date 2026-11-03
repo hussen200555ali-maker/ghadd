@@ -5,7 +5,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- الصلاحيات الست الموثقة في PRIVACY.md — القائمة الكاملة والحصرية -->
+    <!-- الصلاحيات السبع الموثقة في PRIVACY.md — القائمة الكاملة والحصرية -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -13,6 +13,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- [0.3.2] مقاومة النوم: تسمح بفتح حوار النظام «السماح بالعمل دائمًا في
+         الخلفية» بضغطة يدك من بطاقة «مقاومة النوم» — لا تُمنح صامتًا أبدًا.
+         سامسونج يوقف التطبيقات النائمة فيقتل العملية ومعها جلسة الالتقاط،
+         وهذا الاستثناء أول درع بنيوي ضدها (يعمل على أندرويد 9+). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- سحق صلاحيات مكتبة الكشف عند الدمج (manifest merger): الحزمة nsfw_detect
          تعلن 7 صلاحيات لخدمات لا نستخدمها إطلاقًا (قارئ الملفات، الكاميرا، التقارير

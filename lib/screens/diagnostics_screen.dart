@@ -18,11 +18,14 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   Map<String, dynamic> _perms = const {};
   Map<String, dynamic> _proj = const {};
   Map<String, dynamic> _model = const {};
+  Map<String, dynamic> _battery = const {};
   List<String> _logs = const [];
   String _captureResult = '';
   String _scanResult = '';
+  String _batteryResult = '';
   bool _busyCapture = false;
   bool _busyScan = false;
+  bool _busyBattery = false;
 
   @override
   void initState() {
@@ -34,8 +37,39 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     _perms = await GuardSystem.permissionStatus();
     _proj = await GuardSystem.projectionStatus();
     _model = await GuardSystem.prepareModel();
+    _battery = await GuardSystem.batteryStatus();
     _logs = await GuardSystem.guardLogs();
     if (mounted) setState(() {});
+  }
+
+  /// [0.3.2] طلب استثناء البطارية من التشخيص — نفس بطاقة الشاشة الرئيسية.
+  Future<void> _runBatteryExemption() async {
+    setState(() {
+      _busyBattery = true;
+      _batteryResult = 'جارٍ فتح حوار النظام…';
+    });
+    final r = await GuardSystem.requestBatteryExemption();
+    if (!mounted) return;
+    if (r['exempt'] == true) {
+      setState(() {
+        _busyBattery = false;
+        _batteryResult = 'مستثنى مسبقًا ✓ — الحماية في أمان من قتل الخلفية';
+      });
+    } else if (r['opened'] == true) {
+      // الحوار أمام المستخدم الآن — القرار بيدك، والحالة تُقرأ عند العودة
+      setState(() {
+        _busyBattery = false;
+        _batteryResult = 'فُتح حوار النظام «السماح بالعمل دائمًا في الخلفية؟» — '
+            'اختر السماح ثم عد إلى التطبيق (تُحدّث الحالة تلقائيًا).';
+      });
+    } else {
+      setState(() {
+        _busyBattery = false;
+        _batteryResult = 'تعذر فتح الحوار على هذا الجهاز — امنح الاستثناء يدويًا: '
+            'الإعدادات ← التطبيقات ← غَضّ ← البطارية ← «غير محسّن».';
+      });
+    }
+    await _refresh();
   }
 
   Future<void> _runCaptureTest() async {
@@ -125,6 +159,8 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                 _proj['legacy'] == true
                     ? (_proj['active'] == true ? 'منح والمحرك يعمل' : 'لم يُمنح بعد')
                     : 'غير مطلوب (أندرويد 11+)'),
+            _row('استثناء من تحسين البطارية (مقاومة النوم)',
+                _battery['exempt'] == true ? 'مستثنى ✓' : 'غير مستثنى ✗'),
             _row('نموذج الكشف المدمج',
                 _model['ok'] == true ? 'جاهز — ${_model['path'] ?? ''}' : 'غير جاهز!'),
             _row('نسخة أندرويد (API)', '${_perms['sdk'] ?? '?'}'),
@@ -136,6 +172,15 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             if (_captureResult.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(_captureResult, style: const TextStyle(fontSize: 12.5)),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _busyBattery ? null : _runBatteryExemption,
+              child: const Text('مقاومة النوم — طلب استثناء البطارية'),
+            ),
+            if (_batteryResult.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(_batteryResult, style: const TextStyle(fontSize: 12.5)),
             ],
             const SizedBox(height: 12),
             FilledButton(

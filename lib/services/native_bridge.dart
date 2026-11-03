@@ -111,6 +111,34 @@ class GuardSystem {
     }
   }
 
+  /// [0.3.2] حالة مقاومة النوم من النظام مباشرة:
+  /// exempt = التطبيق مستثنى من تحسين البطارية وDoze (أول درع ضد قتل
+  /// سامسونج للعملية النائمة ومعها جلسة الالتقاط)، sdk = إصدار النظام.
+  static Future<Map<String, dynamic>> batteryStatus() async {
+    try {
+      final raw = await _channel.invokeMethod('batteryStatus');
+      return Map<String, dynamic>.from(raw as Map);
+    } on PlatformException {
+      return const {'exempt': false, 'sdk': 0};
+    } on MissingPluginException {
+      return const {'exempt': false, 'sdk': 0};
+    }
+  }
+
+  /// [0.3.2] يفتح حوار النظام «السماح لغَضّ بالعمل دائمًا في الخلفية؟» —
+  /// المنح بيدك حصريًا (لا صامت أبدًا). exempt=true يعني مستثنى مسبقًا،
+  /// opened=true يعني فُتح الحوار/القائمة وعند العودة تُقرأ الحالة الجديدة.
+  static Future<Map<String, dynamic>> requestBatteryExemption() async {
+    try {
+      final raw = await _channel.invokeMethod('requestBatteryExemption');
+      return Map<String, dynamic>.from(raw as Map);
+    } on PlatformException {
+      return const {'exempt': false, 'opened': false};
+    } on MissingPluginException {
+      return const {'exempt': false, 'opened': false};
+    }
+  }
+
   /// الحالة الحقيقية للصلاحيات من النظام (لا ذاكرة الواجهة):
   /// accessibility = خدمة الوصول مُفعّلة فعلًا في الإعدادات الآمنة،
   /// overlay = العرض فوق التطبيقات ممنوح، sdk = إصدار النظام للتفرعات.

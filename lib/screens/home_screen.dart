@@ -22,6 +22,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // حالة مسار الالتقاط البديل (أندرويد 9/10) — legacy=true تعني ظهور بطاقة التصريح
   bool _legacyAndroid = false;
   bool _projectionActive = false;
+  // [0.3.2] مقاومة النوم: التطبيق مستثنى من تحسين البطارية وDoze
+  bool _batteryExempt = false;
 
   @override
   void initState() {
@@ -47,6 +49,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final proj = await GuardSystem.projectionStatus();
     _legacyAndroid = proj['legacy'] == true;
     _projectionActive = proj['active'] == true;
+    // [0.3.2] حالة الاستثناء من تحسين البطارية — من النظام مباشرة
+    try {
+      final bat = await GuardSystem.batteryStatus();
+      _batteryExempt = bat['exempt'] == true;
+    } catch (_) {/* بلا قناة أصلية (اختبار): تبقى كما هي */}
     // الإصلاح: الحالة من النظام لا من نقرات سابقة — كانت البطاقات تعود
     // «غير منجزة» عند كل فتح جديد فيرفض المفتاح رغم المنح الفعلي.
     try {
@@ -142,6 +149,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 await GuardSystem.openOverlaySettings();
                 // الحالة تُحدّث تلقائيًا عند العودة (didChangeAppLifecycleState)
               },
+            ),
+            // [0.3.2] بطاقة مقاومة النوم — على كل الإصدارات: سامسونج يوقف
+            // التطبيقات النائمة فيقتل العملية (وخدمة الوصول وإشعار الدوام يعود
+            // بها النظام، لكن جلسة الالتقاط على 9/10 تموت مع العملية بلا علاج).
+            const SizedBox(height: 10),
+            Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: _batteryExempt
+                      ? GuardTheme.tealDeep
+                      : GuardTheme.card,
+                  foregroundColor: _batteryExempt
+                      ? Colors.white
+                      : GuardTheme.muted,
+                  child: Icon(_batteryExempt ? Icons.check : Icons.battery_saver),
+                ),
+                title: const Text('مقاومة النوم — استمرار الحماية',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text(
+                  'يطلب من النظام استثناء غَضّ من تحسين البطارية (حوار «السماح '
+                  'بالعمل دائمًا في الخلفية؟») — أول درع ضد إيقاف سامسونج '
+                  'للتطبيق في الخلفية وموته معه جلسة الالتقاط. مكمل بإعدادات '
+                  'الجهاز: صيانة الجهاز ← البطارية ← قائمة الثلاث نقاط ← '
+                  'إدارة طاقة التطبيقات: أضف غَضّ إلى «التطبيقات التي لن تتم '
+                  'مراقبتها».',
+                  style: TextStyle(fontSize: 12.5),
+                ),
+                trailing: TextButton(
+                  onPressed: _batteryExempt
+                      ? null
+                      : () async {
+                          await GuardSystem.requestBatteryExemption();
+                          // الحالة تُقرأ فور العودة من حوار النظام
+                          // (didChangeAppLifecycleState → _refresh)
+                        },
+                  child: Text(_batteryExempt ? 'مستثنى ✓' : 'تفعيل'),
+                ),
+              ),
             ),
             // بطاقة أندرويد 9/10 حصرًا: تصريح عرض الشاشة لمسار الالتقاط البديل
             if (_legacyAndroid) ...[

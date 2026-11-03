@@ -6,6 +6,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
@@ -108,6 +109,46 @@ object GuardChannels {
                         "active" to ProjectionCaptureEngine.isReady
                     )
                 )
+                "batteryStatus" -> result.success(
+                    // [0.3.2] حالة مقاومة النوم: هل التطبيق مستثنى من تحسين
+                    // البطارية وDoze؟ الحقيقة من النظام مباشرة لا من ذاكرة الواجهة.
+                    mapOf(
+                        "exempt" to isBatteryExempt(context),
+                        "sdk" to Build.VERSION.SDK_INT
+                    )
+                )
+                "requestBatteryExemption" -> {
+                    // [0.3.2] مقاومة النوم: يفتح حوار النظام «السماح لغَضّ بالعمل
+                    // دائمًا في الخلفية؟» — قرار المستخدم حصريًا، لا منح صامت.
+                    // من محرك بلا نشاط (guardMain) نفتح قائمة الاستثناء مباشرة بعلم NEW_TASK.
+                    if (isBatteryExempt(context)) {
+                        result.success(mapOf("exempt" to true, "opened" to false))
+                    } else {
+                        val opened = try {
+                            val intent = if (activity != null) {
+                                Intent(
+                                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            } else {
+                                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                            true
+                        } catch (t: Throwable) {
+                            // بعض الأغلفة المصنّعية ترفض النداء المباشر — نسقط لقائمة الاستثناء
+                            try {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                                true
+                            } catch (_: Throwable) { false }
+                        }
+                        result.success(mapOf("exempt" to false, "opened" to opened))
+                    }
+                }
                 "permissionStatus" -> {
                     // الحالة الحقيقية من النظام — لا اعتماد على ذاكرة الواجهة:
                     // خدمة الوصول تُقرأ من الإعدادات الآمنة، والعرض فوق التطبيقات
@@ -189,5 +230,11 @@ object GuardChannels {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /** [0.3.2] قراءة استثناء البطارية من PowerManager — مصدر الحقيقة الوحيد. */
+    private fun isBatteryExempt(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 }
