@@ -150,6 +150,8 @@ object GuardChannels {
                 }
                 "testCapture" -> {
                     // اختبار مباشر لمسار الالتقاط من شاشة التشخيص (محرك الواجهة حصرًا)
+                    // [0.3.1] كل مسار فشل يعيد رسالة سبب عربية — كانت الحالة الصامتة
+                    // تظهر للواجهة «فشل: false» بلا أي دليل (بلاغ مالك المشروع).
                     if (activity == null) {
                         result.success(
                             mapOf(
@@ -164,13 +166,21 @@ object GuardChannels {
                                 "note" to "على أندرويد 11+ يكون الالتقاط عبر خدمة الوصول مباشرة — استخدم زر اختبار الكشف"
                             )
                         )
+                    } else if (!ProjectionCaptureEngine.isReady) {
+                        result.success(
+                            mapOf(
+                                "ok" to false,
+                                "note" to "المحرك غير جاهز — جلسة تصريح العرض سقطت (تُسقط بموت العملية بحكم النظام). أعد تفعيلها من بطاقة «تفعيل تصريح عرض الشاشة» في الشاشة الرئيسية ثم كرر الاختبار"
+                            )
+                        )
                     } else {
                         val started = System.currentTimeMillis()
-                        ProjectionCaptureEngine.capture { jpeg ->
+                        ProjectionCaptureEngine.capture { jpeg, reason ->
                             val payload = mapOf(
                                 "ok" to (jpeg != null),
                                 "bytes" to (jpeg?.size ?: 0),
-                                "ms" to (System.currentTimeMillis() - started)
+                                "ms" to (System.currentTimeMillis() - started),
+                                "note" to reason
                             )
                             activity.runOnUiThread { result.success(payload) }
                         }

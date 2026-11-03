@@ -45,7 +45,7 @@ object ProjectionCaptureEngine {
     private val convertExecutor = Executors.newSingleThreadExecutor()
 
     private val capturePending = AtomicBoolean(false)
-    private var pendingResult: ((ByteArray?) -> Unit)? = null
+    private var pendingResult: ((ByteArray?, String?) -> Unit)? = null
     private var timeoutRunnable: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -70,24 +70,7 @@ object ProjectionCaptureEngine {
             img.close() // إطار مرور — يُصرَّف فورًا حتى لا يمتلئ طابور ImageReader
             return
         }
-        cancelTimeout()
-        val cb = pendingResult
-        pendingResult = null
-        convertExecutor.execute {
-            val jpeg = toJpegInMemory(img)
-            mainHandler.post { cb?.invoke(jpeg) }
-        }
-    }
-
-    /** استهلاك إطار مُقبوض: مهلة مُلغاة، تحويل في خيط خلفي، والنتيجة في الخيط الرئيسي. */
-    private fun deliver(img: Image) {
-        cancelTimeout()
-        val cb = pendingResult
-        pendingResult = null
-        convertExecutor.execute {
-            val jpeg = toJpegInMemory(img)
-            mainHandler.post { cb?.invoke(jpeg) }
-        }
+        deliver(img)
     }
 
     /**
@@ -134,23 +117,25 @@ object ProjectionCaptureEngine {
 
     /**
      * طلب إطار واحد: يعيد JPEG bytes عبر onResult في الخيط الرئيسي،
-     * أو null عند فشل/مهلة/عدم جاهزية المحرك — لا استثناءات أبدًا.
+     * أو (null، سبب عربي واضح) عند فشل/مهلة/عدم جاهزية المحرك — لا استثناءات أبدًا.
+     * [0.3.1] السبب الصريح: كانت حالات الفشل تعيد null صامتًا فتظهر للواجهة
+     * كـ«فشل: false» بلا أي دليل — الآن كل مسار فشل يسمّي نفسه.
      */
-    fun capture(onResult: (ByteArray?) -> Unit) {
+    fun capture(onResult: (ByteArray?, String?) -> Unit) {
         val r = reader
         if (!isReady || r == null) {
-            onResult(null)
+            onResult(null, "المحرك غير جاهز — جلسة تصريح العرض سقطت (تُسقط بموت العملية بحكم النظام). أعد تفعيلها من الشاشة الرئيسية بنقرة واحدة")
             return
         }
         if (!capturePending.compareAndSet(false, true)) {
-            onResult(null) // التقط سابق جارٍ — لا تداخل
+            onResult(null, "التقط سابق قيد الجري — أعد المحاولة بعد لحظة")
             return
         }
         pendingResult = onResult
         val to = Runnable {
             if (capturePending.compareAndSet(true, false)) {
                 pendingResult = null
-                onResult(null)
+                onResult(null, "انقضت مهلة ${CAPTURE_TIMEOUT_MS} مللي ثانية بلا إطار من VirtualDisplay — العرض المُعكس متوقف (هل التصريح أوقفه؟)")
             }
         }
         timeoutRunnable = to
@@ -169,6 +154,24 @@ object ProjectionCaptureEngine {
                 deliver(img)
             } else {
                 img.close()
+            }
+        }
+    }
+
+    /** [0.3.1] استهلاك إطار مُقبوض: مهلة مُلغاة، تحويل في خيط خلفي، والنتيجة في الخيط الرئيسي.
+     *  الفشل في التحويل يعلن سببه بدل null الصامت. */
+    private fun deliver(img: Image, reason: String? = null) {
+        cancelTimeout()
+        val cb = pendingResult
+        pendingResult = null
+        convertExecutor.execute {
+            val jpeg = toJpegInMemory(img)
+            mainHandler.post {
+                when {
+                    jpeg != null -> cb?.invoke(jpeg, null)
+                    reason != null -> cb?.invoke(null, reason)
+                    else -> cb?.invoke(null, "فشل تحويل الإطار إلى JPEG في الذاكرة")
+                }
             }
         }
     }

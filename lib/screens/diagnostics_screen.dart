@@ -39,6 +39,20 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   Future<void> _runCaptureTest() async {
+    // [0.3.1] فحص فوري قبل النداء: إن كانت الجلسة ساقطة فالرسالة وحدها كافية —
+    // ومحرك الالتقاط سيعيد نفس السبب من الجهة الأصلية إن تغيرت الحالة الآن.
+    await _refresh();
+    if (!mounted) return;
+    if (_proj['legacy'] == true && _proj['active'] != true) {
+      setState(() {
+        _captureResult =
+            'جلسة تصريح العرض غير نشطة الآن — أعد تفعيلها من بطاقة «تفعيل تصريح '
+            'عرض الشاشة» في الشاشة الرئيسية (نقرة واحدة) ثم كرر هذا الاختبار. '
+            'الجلسة تُسقط بموت العملية بحكم النظام (مسح التطبيق من الأخيرة، قتل '
+            'الخلفية، إعادة الإقلاع) — لا تُخزّن أبدًا.';
+      });
+      return;
+    }
     setState(() {
       _busyCapture = true;
       _captureResult = 'جارٍ الالتقاط…';

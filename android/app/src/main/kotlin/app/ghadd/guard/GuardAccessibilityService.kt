@@ -56,6 +56,9 @@ class GuardAccessibilityService : AccessibilityService() {
     private var deadlineGen = 0
     private var deadlineAt = 0L
 
+    /** [0.3.1] آخر سبب التقاط بديل مُقيَّد — يمنع إغراق سجل الأحداث بالتكرار كل 400 مللي ثانية. */
+    private var lastCaptureReason: String? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -128,9 +131,18 @@ class GuardAccessibilityService : AccessibilityService() {
         } else {
             // المسار البديل (أندرويد 9/10): محرك MediaProjection — نفس عقد دورة الحياة
             // (RAM فقط، بلا ملف وسيط) ونفس حراسة التوليد والمهلة، ونتائجه تمر إلى askDart مباشرة.
-            // إن لم يمنح المستخدم تصريح العرض بعد فالمحرك غير جاهز → null → لا شيء يحدث.
-            ProjectionCaptureEngine.capture { jpeg ->
-                if (jpeg == null || g != generation) return@capture
+            // إن لم يمنح المستخدم تصريح العرض بعد فالمحرك غير جاهز → سبب واضح في السجل → لا شيء يحدث.
+            // [0.3.1] السبب الصريح يُقيَّد مرة واحدة لكل توليد — لا إغراق للسجل بالتكرار.
+            ProjectionCaptureEngine.capture { jpeg, reason ->
+                if (jpeg == null) {
+                    if (g == generation && reason != null && reason != lastCaptureReason) {
+                        lastCaptureReason = reason
+                        GuardLog.add("✗ الالتقاط البديل: $reason")
+                    }
+                    return@capture
+                }
+                lastCaptureReason = null
+                if (g != generation) return@capture
                 askDart(jpeg, g)
             }
         }

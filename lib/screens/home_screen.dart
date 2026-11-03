@@ -63,13 +63,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     if (value && _legacyAndroid && !_projectionActive) {
+      // [0.3.1] الاسترداد بضغطة واحدة: بدل رسالة تحجب الحماية فقط، نفتح حوار
+      // النظام فورًا من المفتاح نفسه — المنح يعيد المستخدم للحماية مباشرة.
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           backgroundColor: GuardTheme.navy2,
-          content: Text('أكمل تفعيل تصريح عرض الشاشة أولًا (خطوة أندرويد 9/10).'),
-          duration: Duration(seconds: 3),
+          content: Text('أكمل حوار تصريح عرض الشاشة ثم شغّل الحماية — الجلسة تعيش طالما التطبيق مستمر.'),
+          duration: Duration(seconds: 4),
         ),
       );
+      await GuardSystem.startProjection();
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      final proj = await GuardSystem.projectionStatus();
+      if (!mounted) return;
+      setState(() {
+        _legacyAndroid = proj['legacy'] == true;
+        _projectionActive = proj['active'] == true;
+      });
       return;
     }
     setState(() => GuardSettings.enabled = value);
@@ -152,9 +162,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   title: const Text('تفعيل تصريح عرض الشاشة',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text(
-                    'أندرويد 9/10 يحتاج تصريح عرض من النظام لالتقاط اللقطات '
-                    '(المسار البديل عن takeScreenshot). الحوار من النظام نفسه، '
-                    'ويعاد تأكيده بعد كل إقلاع للجهاز — التصريح في الذاكرة فقط.',
+                    'أندرويد 9/10 يلتقط عبر هذا التصريح. الجلسة تعيش طالما عمل '
+                    'التطبيق مستمر — وإذا ماتت العملية (مسح التطبيق من الأخيرة، '
+                    'قتل النظام للخلفية، إعادة الإقلاع) يعيد النظام طلبها عمدًا '
+                    '(لا تُخزّن أبدًا). الاسترداد بنقرة واحدة هنا أو من مفتاح الحماية. '
+                    'على سامسونج: اجعل التطبيق «لا ينام» من إعدادات البطارية.',
                     style: TextStyle(fontSize: 12.5),
                   ),
                   trailing: TextButton(
