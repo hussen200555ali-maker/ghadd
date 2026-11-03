@@ -221,10 +221,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 10),
               Card(
                 child: ListTile(
-                  leading: CircleAvatar(
+                  leading: const CircleAvatar(
                     backgroundColor: GuardTheme.card,
                     foregroundColor: GuardTheme.muted,
-                    child: const Icon(Icons.settings_power),
+                    child: Icon(Icons.settings_power),
                   ),
                   title: const Text('سامسونج — القائمة البيضاء للنوم',
                       style: TextStyle(fontWeight: FontWeight.bold)),
