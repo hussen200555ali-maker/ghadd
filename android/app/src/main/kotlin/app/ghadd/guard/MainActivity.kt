@@ -105,6 +105,24 @@ class MainActivity : FlutterActivity() {
                             "active" to ProjectionCaptureEngine.isReady
                         )
                     )
+                    "permissionStatus" -> {
+                        // الحالة الحقيقية من النظام — لا اعتماد على ذاكرة الواجهة:
+                        // خدمة الوصول تُقرأ من الإعدادات الآمنة، والعرض فوق التطبيقات
+                        // من canDrawOverlays. هكذا يظهر المفتاح جاهزًا فور المنح الفعلي.
+                        val enabled = Settings.Secure.getString(
+                            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                        ) ?: ""
+                        result.success(
+                            mapOf(
+                                "accessibility" to (
+                                    enabled.contains(packageName) &&
+                                        enabled.contains("GuardAccessibilityService")
+                                    ),
+                                "overlay" to Settings.canDrawOverlays(this),
+                                "sdk" to Build.VERSION.SDK_INT
+                            )
+                        )
+                    }
                     else -> result.notImplemented()
                 }
             }

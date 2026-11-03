@@ -79,6 +79,17 @@ object ProjectionCaptureEngine {
         }
     }
 
+    /** استهلاك إطار مُقبوض: مهلة مُلغاة، تحويل في خيط خلفي، والنتيجة في الخيط الرئيسي. */
+    private fun deliver(img: Image) {
+        cancelTimeout()
+        val cb = pendingResult
+        pendingResult = null
+        convertExecutor.execute {
+            val jpeg = toJpegInMemory(img)
+            mainHandler.post { cb?.invoke(jpeg) }
+        }
+    }
+
     /**
      * يُستدعى من ProjectionService بعد بدء الخدمة الأمامية — على API 29 يشترط
      * النظام أن تكون خدمة أمامية بنوع mediaProjection قيد التشغيل قبل هذه اللحظة.
@@ -142,6 +153,22 @@ object ProjectionCaptureEngine {
         }
         timeoutRunnable = to
         mainHandler.postDelayed(to, CAPTURE_TIMEOUT_MS)
+        // الإصلاح الحاسم للشاشات الساكنة: الطلب كان ينتظر «إطارًا جديدًا» لا يأتي
+        // أبدًا إن لم تتغير البكسلات (صورة مفتوحة بلا حركة)، بينما الإطار الذي
+        // يُظهر المحتوى الحالي غالبًا في الطابور منذ لحظة الحدث. نجرفه فورًا
+        // من خيط الـImageReader نفسه؛ وإن لم يوجد نُكمل بانتظار المستمع كالسابق.
+        handler?.post {
+            val img = try {
+                reader?.acquireLatestImage()
+            } catch (_: Throwable) {
+                null
+            } ?: return@post
+            if (capturePending.compareAndSet(true, false)) {
+                deliver(img)
+            } else {
+                img.close()
+            }
+        }
     }
 
     private fun cancelTimeout() {

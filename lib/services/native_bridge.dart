@@ -93,6 +93,20 @@ class GuardSystem {
     }
   }
 
+  /// الحالة الحقيقية للصلاحيات من النظام (لا ذاكرة الواجهة):
+  /// accessibility = خدمة الوصول مُفعّلة فعلًا في الإعدادات الآمنة،
+  /// overlay = العرض فوق التطبيقات ممنوح، sdk = إصدار النظام للتفرعات.
+  static Future<Map<String, dynamic>> permissionStatus() async {
+    try {
+      final raw = await _channel.invokeMethod('permissionStatus');
+      return Map<String, dynamic>.from(raw as Map);
+    } on PlatformException {
+      return const {'accessibility': false, 'overlay': false, 'sdk': 0};
+    } on MissingPluginException {
+      return const {'accessibility': false, 'overlay': false, 'sdk': 0};
+    }
+  }
+
   /// يفتح حوار تصريح عرض الشاشة (حوار النظام نفسه) وعند المنح
   /// تبدأ الخدمة الأمامية وتُشغّل محرك الالتقاط البديل.
   static Future<void> startProjection() async {

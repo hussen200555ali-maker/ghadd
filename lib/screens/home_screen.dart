@@ -5,6 +5,8 @@ import '../services/native_bridge.dart';
 import 'settings_screen.dart';
 
 /// الشاشة الرئيسية: معالج إعداد من ثلاث خطوات + مفتاح الحماية + عدادات محلية.
+/// حالة الصلاحيات تُقرأ من النظام مباشرة (permissionStatus) — لا ذاكرة واجهة:
+/// كل فتح جديد للتطبيق أو عودة من الإعدادات يُحدّث البطاقات بالحقيقة الفعلية.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -12,7 +14,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _accessibilityOk = false;
   bool _overlayOk = false;
   Map<String, dynamic> _stats = const {};
@@ -23,7 +25,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // العودة من شاشات منح الصلاحيات (النظام فوقنا ثم نعود) — نقرأ الحقيقة فورًا
+    if (state == AppLifecycleState.resumed) _refresh();
   }
 
   Future<void> _refresh() async {
@@ -31,6 +46,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final proj = await GuardSystem.projectionStatus();
     _legacyAndroid = proj['legacy'] == true;
     _projectionActive = proj['active'] == true;
+    // الإصلاح: الحالة من النظام لا من نقرات سابقة — كانت البطاقات تعود
+    // «غير منجزة» عند كل فتح جديد فيرفض المفتاح رغم المنح الفعلي.
+    try {
+      final st = await GuardSystem.permissionStatus();
+      _accessibilityOk = st['accessibility'] == true;
+      _overlayOk = st['overlay'] == true;
+    } catch (_) {/* بلا قناة أصلية (اختبار): تبقى كما هي */}
     if (mounted) setState(() {});
   }
 
@@ -85,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
               done: _accessibilityOk,
               action: () async {
                 await GuardSystem.openAccessibilitySettings();
-                setState(() => _accessibilityOk = true);
+                // الحالة تُحدّث تلقائيًا عند العودة (didChangeAppLifecycleState)
               },
             ),
             const SizedBox(height: 10),
@@ -96,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
               done: _overlayOk,
               action: () async {
                 await GuardSystem.openOverlaySettings();
-                setState(() => _overlayOk = true);
+                // الحالة تُحدّث تلقائيًا عند العودة (didChangeAppLifecycleState)
               },
             ),
             // بطاقة أندرويد 9/10 حصرًا: تصريح عرض الشاشة لمسار الالتقاط البديل
