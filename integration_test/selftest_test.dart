@@ -177,11 +177,17 @@ void main() {
               modelId: GuardBrain.regionsModelId, confidenceThreshold: 0.25)
           .timeout(const Duration(minutes: 5),
               onTimeout: () => throw StateError('علِق > المهلة: كاشف المناطق علِق >5د'));
-      // صورة رمادية ساكنة: استدلال الكاشف يعمل ويُعيد صفر مربعات (بلا استثناء) —
-      // نجاح الاستدلال نفسه يثبت: تحميل النموذج 10.5MB + فك YOLO [1,9,8400] + NMS.
-      expect(regScan.detections, isNotNull,
-          reason: 'كشف المناطق أعاد detections غير محددة — فك مخرجات YOLO مكسور');
-      debugPrint('[SELFTEST] مرحلة 6 ✓: كاشف المناطق استدل بلا مربعات على رمادية (${regScan.detections!.length})');
+      // اكتمال الحالة يثبت السلسلة الأصلية كاملةً: تحميل النموذج 10.5MB داخل
+      // العزلة + استدلال YOLO [1,9,8400] + فك المربعات وNMS بلا أي استثناء.
+      expect(regScan.status, ScanStatus.completed,
+          reason: 'كشف المناطق لم يكتمل (${regScan.status}) — خطأ تحميل/استدلال');
+      // [توثيق الحزمة] detections == null هو السلوك الموثق حين لا يُصدر الكاشف
+      // مربعات فوق العتبة (BC-safe) — والصورة الرمادية الساكنة يجب ألا تُنتج
+      // أي مربع أصلًا (فحص الإيجابيات الكاذبة البنيوية على إطار بريء).
+      final dets = regScan.detections;
+      expect(dets == null || dets!.isEmpty, isTrue,
+          reason: 'صورة رمادية ساكنة أنتجت ${dets?.length ?? 0} مربعًا — إيجابية كاذبة بنيوية في فك YOLO');
+      debugPrint('[SELFTEST] مرحلة 6 ✓: الكاشف مكتمل ومربعات الرمادية = 0 — سلسلة المناطق سليمة');
     },
     timeout: const Timeout(Duration(minutes: 25)),
   );
