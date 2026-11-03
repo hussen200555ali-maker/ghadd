@@ -24,6 +24,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _projectionActive = false;
   // [0.3.2] مقاومة النوم: التطبيق مستثنى من تحسين البطارية وDoze
   bool _batteryExempt = false;
+  // [0.3.3] المصنّع (لبطاقة سامسونج المخصصة) + حارس الإنقاذ الذاتي لكل فتح
+  String _manufacturer = '';
+  bool _selfHealTried = false;
 
   @override
   void initState() {
@@ -53,7 +56,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final bat = await GuardSystem.batteryStatus();
       _batteryExempt = bat['exempt'] == true;
+      _manufacturer = (bat['manufacturer'] ?? '').toString();
     } catch (_) {/* بلا قناة أصلية (اختبار): تبقى كما هي */}
+    // [0.3.3] الإنقاذ الذاتي عند فتح/عودة التطبيق: الحماية مفعّلة والجلسة
+    // ساقطة على أندرويد 9/10 → نفتح حوار الاستعادة فورًا بدل اكتشافه بيدك.
+    // مرة واحدة لكل فتح (لا مطاردة للمستخدم إن ألغى الحوار عمدًا).
+    if (GuardSettings.enabled &&
+        _legacyAndroid &&
+        !_projectionActive &&
+        !_selfHealTried) {
+      _selfHealTried = true;
+      await GuardSystem.startProjection();
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      final proj2 = await GuardSystem.projectionStatus();
+      if (!mounted) return;
+      setState(() {
+        _legacyAndroid = proj2['legacy'] == true;
+        _projectionActive = proj2['active'] == true;
+      });
+    }
     // الإصلاح: الحالة من النظام لا من نقرات سابقة — كانت البطاقات تعود
     // «غير منجزة» عند كل فتح جديد فيرفض المفتاح رغم المنح الفعلي.
     try {
@@ -188,6 +209,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ),
             ),
+            // [0.3.3] بطاقة سامسونج المخصصة: طبقة «وضع التطبيقات النائمة»
+            // الخاصة بسامسونج لا يغطيها استثناء تحسين البطارية (0.3.2) —
+            // هي قاتل العملية خارج التطبيق، ونفتح شاشتها مباشرة بدل التاهيل
+            // في الإعدادات. تظهر على أجهزة سامسونج فقط.
+            if (_manufacturer.toLowerCase().contains('samsung')) ...[
+              const SizedBox(height: 10),
+              Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: GuardTheme.card,
+                    foregroundColor: GuardTheme.muted,
+                    child: const Icon(Icons.settings_power),
+                  ),
+                  title: const Text('سامسونج — القائمة البيضاء للنوم',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text(
+                    'نفتح لك شاشة «إدارة طاقة التطبيقات» مباشرة: أضف غَضّ إلى '
+                    '«التطبيقات التي لن تتم مراقبتها» وأزِله من «تطبيقات نائمة» '
+                    '— هذه الطبقة الخاصة بسامسونج هي قاتل الجلسة خارج التطبيق.',
+                    style: TextStyle(fontSize: 12.5),
+                  ),
+                  trailing: TextButton(
+                    onPressed: () => GuardSystem.openVendorBatterySettings(),
+                    child: const Text('فتح'),
+                  ),
+                ),
+              ),
+            ],
             // بطاقة أندرويد 9/10 حصرًا: تصريح عرض الشاشة لمسار الالتقاط البديل
             if (_legacyAndroid) ...[
               const SizedBox(height: 10),
@@ -207,11 +256,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   title: const Text('تفعيل تصريح عرض الشاشة',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text(
-                    'أندرويد 9/10 يلتقط عبر هذا التصريح. الجلسة تعيش طالما عمل '
-                    'التطبيق مستمر — وإذا ماتت العملية (مسح التطبيق من الأخيرة، '
-                    'قتل النظام للخلفية، إعادة الإقلاع) يعيد النظام طلبها عمدًا '
-                    '(لا تُخزّن أبدًا). الاسترداد بنقرة واحدة هنا أو من مفتاح الحماية. '
-                    'على سامسونج: اجعل التطبيق «لا ينام» من إعدادات البطارية.',
+                    'أندرويد 9/10 يلتقط عبر هذا التصريح. الجلسة تعيش طالما العملية '
+                    'حية — وإذا سقطت (مسح التطبيق من الأخيرة، قتل النظام للخلفية، '
+                    'إعادة الإقلاع) يعيد النظام طلبها عمدًا (لا تُخزّن أبدًا). '
+                    '[0.3.3] إذا سقطت خارج التطبيق سيصلك إشعار «إنقاذ» — نقرة عليه '
+                    'ثم «سماح الآن» تعيدان الحماية فورًا، وعند فتح التطبيق يُفتح '
+                    'حوار الاستعادة تلقائيًا.',
                     style: TextStyle(fontSize: 12.5),
                   ),
                   trailing: TextButton(

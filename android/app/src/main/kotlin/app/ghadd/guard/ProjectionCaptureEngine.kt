@@ -49,6 +49,11 @@ object ProjectionCaptureEngine {
     private var timeoutRunnable: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /// [0.3.3] خطّاف الإنقاذ الذاتي: يضبطه ProjectionService بعد انطلاق الجلسة
+    /// ويُستدعى مرة واحدة حين تسقط جلسة حيّة (نقرة إيقاف/قتل النظام). الإيقاف
+    /// المقصود يصفّره أولًا في release فلا يُطلق إشعار إنقاذ زائفًا.
+    var onSessionLost: (() -> Unit)? = null
+
     /** هل التصريح منح والمحرك يعمل الآن؟ (حالة جلسة فقط — لا تُخزَّن على القرص) */
     val isReady: Boolean
         get() = projection != null && display != null
@@ -56,7 +61,9 @@ object ProjectionCaptureEngine {
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             Log.i(TAG, "أوقف النظام/المستخدم تصريح العرض — تفريغ محرك الالتقاط البديل")
+            val lost = onSessionLost
             release()
+            lost?.invoke() // [0.3.3] إنقاذ ذاتي: إشعار استرداد فوري (بشرط canGuard)
         }
     }
 
@@ -182,6 +189,9 @@ object ProjectionCaptureEngine {
     }
 
     private fun release() {
+        // [0.3.3] الإيقاف المقصود (stopService/تفريغ) يصفّر الخطّاف أولًا:
+        // projection.stop() هنا يُطلق onStop لاحقًا لكن lost يكون قد صار null.
+        onSessionLost = null
         cancelTimeout()
         capturePending.set(false)
         pendingResult = null

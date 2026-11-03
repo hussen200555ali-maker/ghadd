@@ -133,6 +133,14 @@ class GuardAccessibilityService : AccessibilityService() {
             // (RAM فقط، بلا ملف وسيط) ونفس حراسة التوليد والمهلة، ونتائجه تمر إلى askDart مباشرة.
             // إن لم يمنح المستخدم تصريح العرض بعد فالمحرك غير جاهز → سبب واضح في السجل → لا شيء يحدث.
             // [0.3.1] السبب الصريح يُقيَّد مرة واحدة لكل توليد — لا إغراق للسجل بالتكرار.
+            // [0.3.3] الإنقاذ الذاتي: إن كانت الحماية مطلوبة والجلسة ساقطة فلا صمت
+            // بعد الآن — إشعار استرداد فوري بنقرة (Dedup داخلي 60 ث، ولا شيء حين
+            // تكون الحماية مقفلة بيد المستخدم). هذا المراقب يعمل تحديدًا حين يكون
+            // المستخدم خارج التطبيق — المشهد الذي بلغه المالك.
+            if (!ProjectionCaptureEngine.isReady) {
+                RecoveryNotifier.maybeNotify(this)
+                return
+            }
             ProjectionCaptureEngine.capture { jpeg, reason ->
                 if (jpeg == null) {
                     if (g == generation && reason != null && reason != lastCaptureReason) {

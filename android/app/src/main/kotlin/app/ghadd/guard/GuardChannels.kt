@@ -112,9 +112,12 @@ object GuardChannels {
                 "batteryStatus" -> result.success(
                     // [0.3.2] حالة مقاومة النوم: هل التطبيق مستثنى من تحسين
                     // البطارية وDoze؟ الحقيقة من النظام مباشرة لا من ذاكرة الواجهة.
+                    // [0.3.3] manufacturer: لإظهار بطاقة سامسونج المخصصة على الأجهزة
+                    // المعنية فقط (تجربة إدارة الطاقة العدائية تختلف بكل مصنع).
                     mapOf(
                         "exempt" to isBatteryExempt(context),
-                        "sdk" to Build.VERSION.SDK_INT
+                        "sdk" to Build.VERSION.SDK_INT,
+                        "manufacturer" to Build.MANUFACTURER
                     )
                 )
                 "requestBatteryExemption" -> {
@@ -148,6 +151,41 @@ object GuardChannels {
                         }
                         result.success(mapOf("exempt" to false, "opened" to opened))
                     }
+                }
+                "openVendorBatterySettings" -> {
+                    // [0.3.3] الجذر الثاني لنوم سامسونج: استثناء تحسين البطارية
+                    // (مقاومة النوم 0.3.2) لا يغطي طبقة سامسونج الخاصة «وضع
+                    // التطبيقات غير المستخدمة في وضع السكون» — وهذه هي التي
+                    // تقتل العملية خارج التطبيق. نفتح شاشة إدارة طاقة التطبيقات
+                    // لدى سامسونج مباشرة بمحاولات متدرجة (أسماء نشاطات سامسونج
+                    // تختلف بين الإصدارات — كل محاولة بـtry/منفصلة)، والسقوط
+                    // الآمن النهائي: صفحة معلومات التطبيق (زر البطارية فيها).
+                    var how = "failed"
+                    val candidates = listOf(
+                        Intent("com.samsung.android.sm.ui.battery"),
+                        Intent("com.samsung.android.sm.APP_POWER_MANAGEMENT")
+                    )
+                    for (c in candidates) {
+                        if (how != "failed") break
+                        try {
+                            c.setPackage("com.samsung.android.sm")
+                            if (activity == null) c.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(c)
+                            how = "samsung_battery"
+                        } catch (_: Throwable) { /* المرشح التالي */ }
+                    }
+                    if (how == "failed") {
+                        try {
+                            val appInfo = Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                            if (activity == null) appInfo.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(appInfo)
+                            how = "app_info"
+                        } catch (_: Throwable) { /* لا شيء يُفتح — نرد failed */ }
+                    }
+                    result.success(mapOf("opened" to (how != "failed"), "how" to how))
                 }
                 "permissionStatus" -> {
                     // الحالة الحقيقية من النظام — لا اعتماد على ذاكرة الواجهة:

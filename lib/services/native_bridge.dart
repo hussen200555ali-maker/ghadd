@@ -139,6 +139,21 @@ class GuardSystem {
     }
   }
 
+  /// [0.3.3] فتح شاشة إدارة طاقة التطبيقات لدى المصنّع (سامسونج) مباشرة —
+  /// الطبقة الخاصة «وضع التطبيقات النائمة» التي لا يغطيها استثناء 0.3.2.
+  /// how: samsung_battery (شاشة سامسونج) / app_info (صفحة التطبيق — زر البطارية)
+  /// / failed. opened=false يعني فشل كل المسارات.
+  static Future<Map<String, dynamic>> openVendorBatterySettings() async {
+    try {
+      final raw = await _channel.invokeMethod('openVendorBatterySettings');
+      return Map<String, dynamic>.from(raw as Map);
+    } on PlatformException {
+      return const {'opened': false, 'how': 'failed'};
+    } on MissingPluginException {
+      return const {'opened': false, 'how': 'failed'};
+    }
+  }
+
   /// الحالة الحقيقية للصلاحيات من النظام (لا ذاكرة الواجهة):
   /// accessibility = خدمة الوصول مُفعّلة فعلًا في الإعدادات الآمنة،
   /// overlay = العرض فوق التطبيقات ممنوح، sdk = إصدار النظام للتفرعات.

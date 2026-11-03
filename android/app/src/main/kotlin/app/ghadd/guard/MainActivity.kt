@@ -2,9 +2,12 @@ package app.ghadd.guard
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -32,6 +35,24 @@ class MainActivity : FlutterActivity() {
         }
 
         GuardChannels.register(this, flutterEngine.dartExecutor.binaryMessenger, this)
+
+        // [0.3.3] استرداد تلقائي: فُتح التطبيق من إشعار الإنقاذ (أو بأي طلب
+        // auto_projection) — حوار النظام يُطلق فورًا بلا مطاردة بطاقة.
+        maybeAutoProjection(intent)
+    }
+
+    /** [0.3.3] استرداد بضغطة: إشعار الإنقاذ يفتحنا بعلم auto_projection. */
+    private fun maybeAutoProjection(intent: Intent?) {
+        if (Build.VERSION.SDK_INT >= 30) return
+        if (intent?.getBooleanExtra(RecoveryNotifier.EXTRA_AUTO_PROJECTION, false) != true) return
+        if (ProjectionCaptureEngine.isReady) return
+        try {
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            startActivityForResult(mpm.createScreenCaptureIntent(), GuardChannels.REQ_PROJECTION)
+            GuardLog.add("استرداد تلقائي: فُتح حوار تصريح العرض من إشعار الإنقاذ")
+        } catch (t: Throwable) {
+            Log.w("Ghadd", "تعذر فتح حوار الاسترداد: ${t.message}")
+        }
     }
 
     /** نتيجة حوار تصريح العرض: عند المنح تبدأ الخدمة الأمامية ثم محرك الالتقاط. */
@@ -44,5 +65,12 @@ class MainActivity : FlutterActivity() {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    /** [0.3.3] التطبيق مفتوح ومفرد (singleTop) — إشعار الإنقاذ يصل هنا. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        maybeAutoProjection(intent)
     }
 }

@@ -74,6 +74,11 @@ class ProjectionService : Service() {
 
         ProjectionCaptureEngine.start(applicationContext, rc, data)
         GuardLog.add("خدمة العرض الأمامية بدأت — محرك الالتقاط يُنشأ الآن")
+        // [0.3.3] الإنقاذ الذاتي: حين تسقط الجلسة الحيّة (نقرة إيقاف/قتل النظام)
+        // يُطلق إشعار الاسترداد بضغطة — بشرط canGuard وبدون تكرار داخل نافذة 60 ث.
+        ProjectionCaptureEngine.onSessionLost = {
+            RecoveryNotifier.maybeNotify(this@ProjectionService)
+        }
         return START_NOT_STICKY
     }
 
