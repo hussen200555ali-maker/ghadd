@@ -18,6 +18,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: emulator-proof
+  cancel-in-progress: false
+
 jobs:
   emulator-proof:
     name: "محاكي أندرويد 9 — إثبات سلسلة الكشف"
@@ -60,6 +64,9 @@ jobs:
           disable-animations: true
           script: |
             set -o pipefail
+            # فخ الأدلة: عند أي فشل/إيقاف تُلتقط الشاشة والسجلات قبل انتهاء المحاكي
+            # (إلغاء 12:52 خسر الأدلة لأن الالتقاط كان في خطوة لاحقة لم تُنفَّذ)
+            trap 'adb exec-out screencap -p > /tmp/ghadd-emulator.png 2>/dev/null; adb logcat -d > /tmp/logcat_full.txt 2>/dev/null; grep -aiE "ghadd|flutter|tflite|nsfw" /tmp/logcat_full.txt | tail -200 > /tmp/logcat_ghadd.txt 2>/dev/null' EXIT INT TERM
             echo "=== 1/3 اختبار التكامل على المحاكي (مسار زر الاختبار الذاتي) ==="
             flutter test integration_test --device-id emulator-5554 2>&1 | tee /tmp/it_log.txt
 
@@ -101,4 +108,5 @@ jobs:
           path: |
             /tmp/ghadd-emulator.png
             /tmp/logcat_ghadd.txt
-          if-no-files-found: ignore
+            /tmp/it_log.txt
+          if-no-files-found: warn
