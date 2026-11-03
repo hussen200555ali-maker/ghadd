@@ -103,16 +103,15 @@ object OverlayController {
         regionWindow?.let { removeRegionView(it) }
 
         val metrics = context.resources.displayMetrics
-        val screenW = metrics.widthPixels.toFloat()
-        val screenH = metrics.heightPixels.toFloat()
+        val screenW = metrics.widthPixels.toDouble()
+        val screenH = metrics.heightPixels.toDouble()
         val regions = rects.mapNotNull { r ->
             if (r.size < 4) return@mapNotNull null
-            RectF(
-                (r[0] * screenW).coerceAtLeast(0f),
-                (r[1] * screenH).coerceAtLeast(0f),
-                ((r[0] + r[2]) * screenW).coerceAtMost(screenW),
-                ((r[1] + r[3]) * screenH).coerceAtMost(screenH)
-            )
+            val l = (r[0] * screenW).coerceAtLeast(0.0)
+            val t = (r[1] * screenH).coerceAtLeast(0.0)
+            val rt = ((r[0] + r[2]) * screenW).coerceAtMost(screenW)
+            val b = ((r[1] + r[3]) * screenH).coerceAtMost(screenH)
+            RectF(l.toFloat(), t.toFloat(), rt.toFloat(), b.toFloat())
         }.filter { it.width() > 8f && it.height() > 8f }
         if (regions.isEmpty()) return
 
