@@ -28,6 +28,8 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # تثبيت الإصدار — قابلية تكرار البناء ومنع انحراف stable الجديد أوسط البناء
+          flutter-version: 3.47.9
           cache: true
 
       # flutter create يكمل الملفات المنصّية الناقصة فقط (gradle wrapper، أيقونات mipmap…)
@@ -59,6 +61,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.47.9
           cache: true
 
       - name: استكمال ملفات منصة أندرويد الناقصة
