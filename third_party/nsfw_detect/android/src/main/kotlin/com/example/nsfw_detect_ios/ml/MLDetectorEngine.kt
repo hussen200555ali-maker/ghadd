@@ -83,6 +83,11 @@ data class BodyPartDetection(
          */
         fun aggregateCategoryFor(rawLabel: String): String {
             return when (rawLabel.trim().uppercase()) {
+                // [رقعة ghadd 0.3] فئات كاشف EraX-NSFW الخامس — الترتيب يطابق
+                // names dict للنموذج: {0: anus, 1: make_love, 2: nipple, 3: penis, 4: vagina}
+                "ANUS", "PENIS", "VAGINA", "MAKE_LOVE" -> "explicitNudity"
+                "NIPPLE" -> "nudity"
+
                 "FEMALE_GENITALIA_EXPOSED",
                 "MALE_GENITALIA_EXPOSED",
                 "ANUS_EXPOSED" -> "explicitNudity"

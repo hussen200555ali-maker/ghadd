@@ -44,6 +44,20 @@ class TFLiteDetectorEngine(
 
     private var minConfidence: Float = 0.25f
 
+    /**
+     * [رقعة ghadd 0.3] جدول الفئات يُقرأ من تسجيل النموذج (metadata.classLabels)
+     * — كاشف EraX-NSFW الخامس (anus/make_love/nipple/penis/vagina) يمرّ هنا،
+     * ويبقى جدول NudeNet الثماني عشرة احتياطيًا الافتراضي للنماذج المدمجة.
+     */
+    private val classLabels: List<String> = run {
+        val custom = (descriptor.metadata["classLabels"] as? List<*>)
+            ?.mapNotNull { it as? String }
+            .orEmpty()
+        if (custom.size >= 1) custom else NUDENET_LABELS
+    }
+
+    private val numClasses: Int = classLabels.size
+
     override val loadedDelegate: String?
         get() = actualLoadedDelegate
 
@@ -124,12 +138,14 @@ class TFLiteDetectorEngine(
 
                 // Read output shape from the interpreter — A varies with input size
                 // (8400 for 640, 2100 for 320). Allocate exactly to avoid over-reads.
-                val outShape = interp.getOutputTensor(0).shape()  // [1, 22, A]
-                require(outShape.size == 3 && outShape[1] == CHANNELS) {
-                    "Unexpected detector output shape ${outShape.contentToString()}; expected [1, $CHANNELS, A]"
+                // [رقعة ghadd 0.3] عدد القنوات ديناميكي من الشكل الفعلي (4 + عدد فئات
+                // النموذج) — نموذج EraX يعلن [1, 9, 8400] وNudeNet يعلن [1, 22, A].
+                val outShape = interp.getOutputTensor(0).shape()  // [1, C, A]
+                require(outShape.size == 3 && outShape[1] == 4 + numClasses) {
+                    "Unexpected detector output shape ${outShape.contentToString()}; expected [1, ${4 + numClasses}, A]"
                 }
                 val numAnchors = outShape[2]
-                val output = Array(1) { Array(CHANNELS) { FloatArray(numAnchors) } }
+                val output = Array(1) { Array(4 + numClasses) { FloatArray(numAnchors) } }
                 interp.run(inputBuffer, output)
                 parseAndNms(output[0], numAnchors)
             } finally {
@@ -140,17 +156,18 @@ class TFLiteDetectorEngine(
 
     /**
      * Parse YOLOv8 raw output and apply class-aware NMS. Per-anchor layout:
-     * `[cx, cy, w, h, score_0, …, score_17]` with bbox in input-pixel coords
-     * and scores already sigmoid-activated.
+     * `[cx, cy, w, h, score_0, …, score_N-1]` with bbox in input-pixel coords
+     * and scores already sigmoid-activated. [رقعة ghadd 0.3] عدد الفئات من
+     * جدول التسجيل بدل الثابت 18.
      */
     private fun parseAndNms(out: Array<FloatArray>, numAnchors: Int): List<BodyPartDetection> {
         val candidates = ArrayList<Box>(64)
         val invSize = 1f / inputSize
         for (i in 0 until numAnchors) {
-            // Argmax over class scores (channels 4..21).
+            // Argmax over class scores (channels 4..4+numClasses-1).
             var bestScore = 0f
             var bestClass = -1
-            for (c in 0 until NUM_CLASSES) {
+            for (c in 0 until numClasses) {
                 val s = out[4 + c][i]
                 if (s > bestScore) {
                     bestScore = s
@@ -186,7 +203,7 @@ class TFLiteDetectorEngine(
 
         val results = ArrayList<BodyPartDetection>(kept.size)
         for (b in kept) {
-            val label = NUDENET_LABELS.getOrNull(b.classIndex) ?: continue
+            val label = classLabels.getOrNull(b.classIndex) ?: continue
             results.add(
                 BodyPartDetection(
                     label = label,
@@ -311,8 +328,6 @@ class TFLiteDetectorEngine(
     private companion object {
         const val TAG = "NSFW-TFLiteDetector"
         const val DEFAULT_INPUT_SIZE = 640
-        const val NUM_CLASSES = 18
-        const val CHANNELS = 4 + NUM_CLASSES   // YOLOv8: 4 bbox + 18 classes
         const val IOU_THRESHOLD = 0.45f
         const val MAX_DETECTIONS = 100
 

@@ -44,6 +44,16 @@ object GuardPrefs {
     fun setExpanded(ctx: Context, value: Boolean) =
         sp(ctx).edit().putBoolean("expanded", value).apply()
 
+    /**
+     * [0.3.0] وضع المناطق (افتراضيًا مفعّل — تجربة المستخدم المثالية): عند الكشف
+     * تُغطى المربعات المكتشفة فقط (بلا مانع لمس — العمل يواصل كالمعتاد)، مع
+     * التغطية الكاملة للشاشة احتياطًا حين يتعذر تحديد مواضع.
+     */
+    fun regionMode(ctx: Context): Boolean = sp(ctx).getBoolean("region_mode", true)
+
+    fun setRegionMode(ctx: Context, value: Boolean) =
+        sp(ctx).edit().putBoolean("region_mode", value).apply()
+
     fun isWhitelisted(ctx: Context, packageName: String): Boolean =
         sp(ctx).getStringSet("whitelist", emptySet())?.contains(packageName) ?: false
 

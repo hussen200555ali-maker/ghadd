@@ -31,9 +31,10 @@ void main() {
 
   const modelId = 'ghadd_nsfw';
   late String preparedPath;
+  late String regionsPreparedPath;
 
   setUpAll(() async {
-    debugPrint('[SELFTEST] setUpAll: تحميل النموذج المدمج من الأصول…');
+    debugPrint('[SELFTEST] setUpAll: تحميل النموذجين المدمجين من الأصول…');
     // 1+2: النموذج المدمج داخل الـAPK → ملفات التطبيق الخاصة (cacheDir داخل العزلة)
     final data = await rootBundle.load('assets/models/nsfw.tflite').timeout(
           const Duration(minutes: 2),
@@ -49,12 +50,33 @@ void main() {
     preparedPath = f.path;
     debugPrint('[SELFTEST] setUpAll: النسخ إلى ${f.path} ✓');
 
+    // [0.3.0] نموذج المناطق (EraX YOLO11n ~10.5MB) — نفس العقد
+    final rdata = await rootBundle.load('assets/models/nsfw_regions.tflite').timeout(
+          const Duration(minutes: 2),
+          onTimeout: () => throw StateError('علِق > المهلة: rootBundle.load لنموذج المناطق علِق >2د'),
+        );
+    assert(rdata.lengthInBytes > 5 * 1024 * 1024,
+        'نموذج المناطق غير موجود أو مقطوع — الحجم الفعلي ${rdata.lengthInBytes}');
+    debugPrint('[SELFTEST] setUpAll: نموذج المناطق ${rdata.lengthInBytes} بايت ✓');
+    final rf = File('${dir.path}/nsfw_regions_it.tflite');
+    await rf.writeAsBytes(
+        rdata.buffer.asUint8List(rdata.offsetInBytes, rdata.lengthInBytes),
+        flush: true);
+    regionsPreparedPath = rf.path;
+
     // 3: محاكاة قناة ghadd/system بنفس عقد الإنتاج حتى يعمل GuardBrain.ensure()
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel('ghadd/system'), (call) async {
       switch (call.method) {
         case 'prepareModel':
-          return {'ok': true, 'path': preparedPath, 'modelId': modelId};
+          return {
+            'ok': true,
+            'path': preparedPath,
+            'modelId': modelId,
+            'regionsOk': true,
+            'regionsPath': regionsPreparedPath,
+            'regionsModelId': 'ghadd_nsfw_regions',
+          };
         case 'logFromDart':
           return true;
         case 'guardLogs':
@@ -145,6 +167,21 @@ void main() {
       expect((sa - sb).abs(), lessThan(0.01),
           reason: 'نتيجة الاستدلال غير مستقرة بين نداءين متتاليين على نفس المدخل');
       debugPrint('[SELFTEST] مرحلة 5 ✓: $sa ≈ $sb — السلسلة كلها سليمة');
+
+      // ===== 7 [0.3.0]: سلسلة المناطق — كاشف YOLO مسجّل + استدلال مربعات =====
+      debugPrint('[SELFTEST] مرحلة 6: كاشف المناطق (EraX YOLO11n)…');
+      expect(GuardBrain.regionsReady, isTrue,
+          reason: 'كاشف المناطق لم يُسجّل في GuardBrain.ensure رغم توفر النموذج');
+      final regScan = await NsfwDetector.instance
+          .scanBytes(GuardBrain.warmupJpeg,
+              modelId: GuardBrain.regionsModelId, confidenceThreshold: 0.25)
+          .timeout(const Duration(minutes: 5),
+              onTimeout: () => throw StateError('علِق > المهلة: كاشف المناطق علِق >5د'));
+      // صورة رمادية ساكنة: استدلال الكاشف يعمل ويُعيد صفر مربعات (بلا استثناء) —
+      // نجاح الاستدلال نفسه يثبت: تحميل النموذج 10.5MB + فك YOLO [1,9,8400] + NMS.
+      expect(regScan.detections, isNotNull,
+          reason: 'كشف المناطق أعاد detections غير محددة — فك مخرجات YOLO مكسور');
+      debugPrint('[SELFTEST] مرحلة 6 ✓: كاشف المناطق استدل بلا مربعات على رمادية (${regScan.detections!.length})');
     },
     timeout: const Timeout(Duration(minutes: 25)),
   );

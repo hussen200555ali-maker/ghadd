@@ -46,6 +46,7 @@ object GuardChannels {
                         GuardPrefs.setWhitelist(context, it.filterNotNull().map(Any::toString).toSet())
                     }
                     (args["expanded"] as? Boolean)?.let { GuardPrefs.setExpanded(context, it) }
+                    (args["regionMode"] as? Boolean)?.let { GuardPrefs.setRegionMode(context, it) }
                     result.success(true)
                 }
                 "stats" -> result.success(GuardPrefs.stats(context))
@@ -126,14 +127,19 @@ object GuardChannels {
                     )
                 }
                 "prepareModel" -> {
-                    // تجهيز النموذج المدمج (نسخ من الأصول إلى filesDir) — أساس مسار الكشف.
+                    // تجهيز النموذجين المدمجين (نسخ من الأصول إلى filesDir) — أساس مسار الكشف.
                     // يُستدعى من المحركين: الواجهة (شاشة التشخيص) وguardMain قبل أول فحص.
+                    // [0.3.0] معهما نموذج المناطق (كاشف YOLO للمربعات).
                     val path = GuardModelStore.ensure(context)
+                    val regionsPath = GuardModelStore.ensureRegions(context)
                     result.success(
                         mapOf(
                             "ok" to (path != null),
                             "path" to (path ?: ""),
-                            "modelId" to GuardModelStore.MODEL_ID
+                            "modelId" to GuardModelStore.MODEL_ID,
+                            "regionsOk" to (regionsPath != null),
+                            "regionsPath" to (regionsPath ?: ""),
+                            "regionsModelId" to GuardModelStore.REGIONS_MODEL_ID
                         )
                     )
                 }

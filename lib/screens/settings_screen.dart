@@ -76,6 +76,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _save();
               },
             ),
+            const SizedBox(height: 8),
+            // [0.3.0] وضع المناطق — تجربة المستخدم المثالية: يُغطى المكتشف فقط
+            // ويبقى بقية الشاشة صالحة للعمل (اللمس يمر عبر التغطية).
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: GuardTheme.tealDeep,
+              title: const Text('تغطية المناطق المكتشفة فقط',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text(
+                'عند الكشف تُغطى الصورة الحساسة وحدها بمستطيل — وتبقى النصوص وبقية '
+                'الشاشة ظاهرة ويمكنك متابعة عملك وتمريرك كالمعتاد (اللمس يمر عبر '
+                'التغطية). عند تعذر تحديد المواضع تُطبَّق التغطية الكاملة احتياطًا.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              value: GuardSettings.regionMode,
+              onChanged: (v) {
+                setState(() => GuardSettings.regionMode = v);
+                _save();
+              },
+            ),
             const SizedBox(height: 22),
             const Text('القائمة البيضاء — حزم تطبيقات تُتجاهل بالكامل'),
             const Text(

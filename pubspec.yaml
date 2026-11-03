@@ -1,7 +1,7 @@
 name: ghadd
 description: نموذج أولي — حماية بصرية طوعية تعمل على الجهاز بالكامل، بلا صلاحية INTERNET (وثيقة الجدوى، الملحق أ)
 publish_to: "none"
-version: 0.2.3
+version: 0.3.0
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -38,3 +38,6 @@ flutter:
     # (سبب جوهري: حزمة nsfw_detect تنزّل نماذجها افتراضيًا من الشبكة،
     #  وهو مستحيل في تطبيق بلا صلاحية INTERNET)
     - assets/models/nsfw.tflite
+    # [0.3.0] كاشف المناطق (EraX-NSFW YOLO11n — Apache 2.0، ~10.5MB):
+    # مربعات الأجزاء المكشوفة لتغطية المناطق فقط — مدمج مثل النموذج الأول
+    - assets/models/nsfw_regions.tflite

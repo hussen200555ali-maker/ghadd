@@ -13,6 +13,8 @@
 | --- | --- |
 | `ml/TFLiteEngine.kt` | إضافة `writePixelsShapeAware()` (دالة على مستوى الملف) واستدعاؤها في `classify()` |
 | `ml/TFLiteDetectorEngine.kt` | استدعاء الدالة المشتركة نفسها بدل حلقة الكتابة الحرفية HWC |
+| `ml/TFLiteDetectorEngine.kt` | **رقعة ghadd 0.3:** عدد فئات الكاشف ديناميكي من جدول التسجيل (`metadata.classLabels`) بدل ثابت NudeNet-18، ومطابقة شكل المخرج `[1, 4+nc, A]` ديناميكيًا — يخدم كاشف EraX-NSFW الخامس |
+| `ml/MLDetectorEngine.kt` | **رقعة ghadd 0.3:** `aggregateCategoryFor` يفهم فئات EraX الخمس (ANUS/PENIS/VAGINA/MAKE_LOVE→explicitNudity، NIPPLE→nudity) |
 
 ### جذر الخلل (موثق بالتحقق المباشر)
 

@@ -181,11 +181,25 @@ class GuardAccessibilityService : AccessibilityService() {
                         val unsafe = map?.get("unsafe") as? Boolean ?: false
                         val score = map?.get("score")
                         if (unsafe) {
-                            GuardLog.add("⚠ كشف محتوى غير لائق في $pkg — الدرجة $score — عرض الطمس")
                             GuardPrefs.incrementBlocked(this@GuardAccessibilityService, pkg)
-                            OverlayController.show(this@GuardAccessibilityService)
+                            // [0.3.0] وضع المناطق: مربعات مكتشفة → تغطيتها فقط (بلا مانع
+                            // لمس — العمل يواصل). تعذر تحديد المواضع أو الوضع مطفأً →
+                            // التغطية الكاملة كما في 0.2.x.
+                            val regions = map?.get("regions") as? List<*>
+                            val parsed = regions?.mapNotNull { r ->
+                                (r as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() }
+                            }.orEmpty()
+                            if (GuardPrefs.regionMode(this@GuardAccessibilityService) && parsed.isNotEmpty()) {
+                                GuardLog.add("⚠ كشف غير لائق في $pkg — الدرجة $score — تغطية ${parsed.size} منطقة (العمل يواصل)")
+                                OverlayController.showRegions(this@GuardAccessibilityService, parsed)
+                            } else {
+                                GuardLog.add("⚠ كشف محتوى غير لائق في $pkg — الدرجة $score — عرض الطمس الكامل")
+                                OverlayController.show(this@GuardAccessibilityService)
+                            }
                         } else {
                             GuardLog.add("فحص $pkg — آمن (أعلى درجة $score)")
+                            // [0.3.0] فحص سليم لاحق → رفع أي تغطية مناطق عالقة فورًا.
+                            OverlayController.hideRegions(this@GuardAccessibilityService)
                         }
                     }
 
