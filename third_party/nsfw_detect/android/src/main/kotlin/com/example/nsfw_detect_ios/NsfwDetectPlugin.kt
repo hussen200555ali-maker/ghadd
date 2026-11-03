@@ -1,0 +1,107 @@
+package com.example.nsfw_detect_ios
+
+import android.app.Activity
+import android.content.pm.PackageManager
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import com.example.nsfw_detect_ios.camera.NsfwCameraPreviewFactory
+import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.PluginRegistry
+
+/**
+ * NsfwDetectPlugin — Flutter plugin entry point.
+ * Implements FlutterPlugin, ActivityAware, and RequestPermissionsResultListener
+ * to support runtime permission requests forwarded from ScanMethodHandler.
+ */
+class NsfwDetectPlugin : FlutterPlugin, ActivityAware, PluginRegistry.RequestPermissionsResultListener, PluginRegistry.ActivityResultListener {
+
+    private lateinit var methodChannel: MethodChannel
+    private lateinit var eventChannel: EventChannel
+    private lateinit var scanEventSink: ScanEventSink
+    private lateinit var scanMethodHandler: ScanMethodHandler
+
+    private var activityBinding: ActivityPluginBinding? = null
+
+    // MARK: - FlutterPlugin
+
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        scanEventSink = ScanEventSink()
+        scanMethodHandler = ScanMethodHandler(binding.applicationContext, scanEventSink)
+
+        methodChannel = MethodChannel(binding.binaryMessenger, ChannelConstants.METHOD_CHANNEL)
+        methodChannel.setMethodCallHandler(scanMethodHandler)
+
+        eventChannel = EventChannel(binding.binaryMessenger, ChannelConstants.EVENT_CHANNEL)
+        eventChannel.setStreamHandler(scanEventSink)
+
+        // Phase 04 / WIDGET-01 — register the camera-preview platform view
+        // so the Dart NsfwCameraView can host a CameraX PreviewView backed
+        // by the same Preview use case CameraSessionTask binds alongside
+        // ImageAnalysis. View-type id matches the Dart contract.
+        binding.platformViewRegistry.registerViewFactory(
+            "nsfw_detect_ios/camera_preview",
+            NsfwCameraPreviewFactory(binding.applicationContext),
+        )
+    }
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        // Stop native work BEFORE detaching the channels — otherwise
+        // currentSession / currentCamera keep firing emit() against a sink
+        // whose EventChannel is about to go away, and CameraX keeps the
+        // activity-context alive for a moment after the engine detaches.
+        if (::scanMethodHandler.isInitialized) {
+            scanMethodHandler.dispose()
+        }
+        methodChannel.setMethodCallHandler(null)
+        eventChannel.setStreamHandler(null)
+    }
+
+    // MARK: - ActivityAware
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
+        binding.addActivityResultListener(this)
+        scanMethodHandler.activity = binding.activity
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding?.removeActivityResultListener(this)
+        activityBinding = null
+        scanMethodHandler.activity = null
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
+        binding.addActivityResultListener(this)
+        scanMethodHandler.activity = binding.activity
+    }
+
+    override fun onDetachedFromActivity() {
+        activityBinding?.removeRequestPermissionsResultListener(this)
+        activityBinding?.removeActivityResultListener(this)
+        activityBinding = null
+        scanMethodHandler.activity = null
+    }
+
+    // MARK: - RequestPermissionsResultListener
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ): Boolean {
+        return scanMethodHandler.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    // MARK: - ActivityResultListener
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?): Boolean {
+        return scanMethodHandler.onActivityResult(requestCode, resultCode, data)
+    }
+
+}

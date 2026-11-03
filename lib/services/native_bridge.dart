@@ -206,8 +206,13 @@ class GuardBrain {
   static bool get ready => _ready;
 
   /// صورة اختبار 64×64 رمادية (JPEG مبني في الذاكرة) — للتسخين والفحص الذاتي.
-  static final Uint8List warmupJpeg =
-      base64Decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCABAAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwCGiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD//Z');
+  /// [إصلاح 0.2.3] الثابت السابق كان base64 تالفًا (طوله 917 حرفًا — ليس من
+  /// مضاعفات الأربعة) فكان كل فحص ذاتي يفشل بـFormatException قبل الوصول
+  /// إلى النموذج أصلًا. الثابت الحالي مولَّد ومُتحقق منه برمجيًا (طول 920،
+  /// فك/تشفير مستدير، ترويسة FFD8 ونهاية FFD9) واختبار العقد يحميه في
+  /// test/warmup_test.dart.
+  static final Uint8List warmupJpeg = base64Decode(
+      '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABAAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA/9k=');
 
   /// يضمن: نسخ النموذج (أصلي) + تسجيله في الحزمة. آمن للاستدعاء المتكرر —
   /// يُستدعى من المحركين (الرئيسي للواجهة والتشخيص، ومحرك guardMain للكشف).
@@ -266,10 +271,20 @@ class DetectorService {
     bool expanded = false,
   }) async {
     if (!GuardBrain.ready) await GuardBrain.ensure();
+    // [تحصين 0.2.3] إن فشل تسجيل النموذج المدمج فلا ننزلق أبدًا إلى scanBytes
+    // بلا modelId — كان سقوط النداء على النموذج الافتراضي (opennsfw2_coreml)
+    // الذي يحتاج تنزيلًا من الشبكة يُنتج خطأ «ML model not downloaded» المبهم.
+    // الآن الخطأ صريح ومباشر ويظهر في سجل الأحداث كما هو.
+    if (!GuardBrain.ready) {
+      throw PlatformException(
+        code: 'MODEL_NOT_READY',
+        message: 'النموذج المدمج غير مسجل في محرك الكشف — تحقق من شاشة التشخيص',
+      );
+    }
     final effective = expanded && threshold > 0.45 ? 0.45 : threshold;
     final dynamic result = await NsfwDetector.instance.scanBytes(
       bytes,
-      modelId: GuardBrain.ready ? GuardBrain.modelId : null,
+      modelId: GuardBrain.modelId,
       confidenceThreshold: effective,
     );
     final parsed = _bestScore(result);

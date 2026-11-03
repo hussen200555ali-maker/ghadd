@@ -1,0 +1,62 @@
+name: nsfw_detect
+description: >-
+  Privacy-friendly NSFW detection for Flutter apps. Analyze images, videos,
+  picked media, photo libraries, and camera frames on-device.
+
+version: 2.8.0
+
+homepage: https://github.com/nexas105/flutter_nsfw_scaner
+repository: https://github.com/nexas105/flutter_nsfw_scaner
+issue_tracker: https://github.com/nexas105/flutter_nsfw_scaner/issues
+documentation: https://pub.dev/documentation/nsfw_detect/latest/
+
+topics:
+  - content-moderation
+  - nsfw-detection
+  - camera
+  - video-scanning
+  - permission-handling
+
+funding:
+  - https://github.com/sponsors/nexas105
+
+environment:
+  sdk: ^3.4.0
+  flutter: '>=3.22.0'
+
+platforms:
+  android:
+  ios:
+  web:
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  plugin_platform_interface: ^2.0.2
+  # Web-only: DOM / Canvas / Blob access for the browser implementation.
+  # Pulled in unconditionally so `flutter analyze` resolves the web sources;
+  # the mobile build tree-shakes it out (web sources are web-target only).
+  web: ^1.1.0
+  # SharedPreferencesAsync (used by SharedPreferencesDecisionStore) was added
+  # in shared_preferences 2.3.0 — the lower bound must reflect that.
+  shared_preferences: ^2.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  shared_preferences_platform_interface: ^2.4.0
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: NsfwDetectIosPlugin
+      android:
+        package: com.example.nsfw_detect_ios
+        pluginClass: NsfwDetectPlugin
+      web:
+        pluginClass: NsfwDetectWeb
+        fileName: src/platform/nsfw_web.dart

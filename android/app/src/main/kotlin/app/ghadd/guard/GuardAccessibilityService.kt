@@ -215,6 +215,11 @@ class GuardAccessibilityService : AccessibilityService() {
             val entrypoint = DartExecutor.DartEntrypoint(loader.findAppBundlePath(), "guardMain")
             val eng = FlutterEngineGroup(applicationContext)
                 .createAndRunEngine(applicationContext, entrypoint)
+            // [إصلاح 0.2.3 — جذري] المحرك الأوسطي بلا معالجات القنوات كان يُفشل
+            // GuardBrain.ensure() بصمت (MissingPluginException) فلا يُسجَّل النموذج
+            // المدمج وتنهار كل الفحوص على «النموذج الافتراضي يحتاج تنزيلًا».
+            // الآن تُسجَّل القناتان المشتركتان هنا أيضًا — بلا نشاط (بلا حوارات).
+            GuardChannels.register(applicationContext, eng.dartExecutor.binaryMessenger, null)
             engine = eng
             eng
         } catch (t: Throwable) {

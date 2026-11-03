@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- API ≤32: broad external storage read -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- API ≤28: write needed to delete media (asset management). Runtime grant
+         rides on the READ_EXTERNAL_STORAGE grant (same STORAGE group pre-Q).
+         API ≥29 uses MediaStore.createDeleteRequest / RecoverableSecurityException
+         consent instead — no broad write. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- API 33: granular media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!-- API ≥34: limited photo picker access -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
+    <!-- Live camera scan pipeline (v2.1.0). The plugin requests this at
+         runtime via CameraPermission; host apps don't need to pre-request. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Anonymous crash + diagnostics reporting. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+</manifest>

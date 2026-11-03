@@ -1,6 +1,12 @@
 # قواعد الفحص الثابت للنموذج الأولي
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # الحزمة المستضافة ليست كودنا — لها سياقها الخاص ولا تُفحص ببواباتنا
+    # (تحليلها بقواعد 2026 يُنتج تحذيرات lint من كود 2025 يكسر البوابة 1)
+    - "third_party/**"
+
 linter:
   rules:
     prefer_const_constructors: true
