@@ -1,0 +1,104 @@
+name: "المحاكي السحابي — إثبات الكشف على أندرويد 9 حقيقي"
+
+# لماذا هذا الملف؟ طلب مالك المشروع: «حاول تجربته على محاكي سحابي».
+# هذا السير عمل يشغّل محاكي أندرويد حقيقي (API 28 = أندرويد 9 — نفس نظام جهاز
+# سامسونج S8 الذي أبلغ عن المشكلة) على خوادم GitHub، ويثبّت التطبيق، وينفّذ
+# سلسلة الكشف كاملة (النموذج 88MB → التسجيل → استدلال TFLite → المسار الإنتاجي)،
+# ثم يثبّت نسخة الإصدار الفعلية ويتحقق من إقلاعها ويلتقط لقطة شاشة دليلًا مرئيًا.
+#
+# ثلاث طبقات إثبات في هذا الملف:
+#   1) اختبار تكامل على المحاكي: نفس مسار زر «اختبار الكشف الذاتي» حرفيًا.
+#   2) فحص إقلاع نسخة الإصدار (release) — نفس الملف الذي يثبّته المستخدم.
+#   3) أدلة مرفوعة كعناصر: لقطة شاشة من المحاكي + سجل logcat.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  emulator-proof:
+    name: "محاكي أندرويد 9 — إثبات سلسلة الكشف"
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.9
+          cache: true
+
+      # استكمال ملفات المنصة الناقصة فقط (gradle wrapper…) — لا يلمس ملفاتنا
+      - name: استكمال ملفات منصة أندرويد الناقصة
+        run: flutter create --platforms=android --org app.ghadd --project-name ghadd .
+
+      - name: جلب الاعتمادات
+        run: flutter pub get
+
+      # بناء نسخة الإصدار قبل تشغيل المحاكي — نفس الـAPK الذي يثبّته المستخدم،
+      # للتأكد مبكرًا من سلامة بناء الإصدار قبل الانشغال بالمحاكي
+      - name: بناء نسخة الإصدار مسبقًا
+        run: flutter build apk --release
+
+      - name: تشغيل المحاكي وتنفيذ الإثبات
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 28
+          target: google_apis
+          arch: x86_64
+          profile: pixel
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 3072
+          disable-animations: true
+          script: |
+            set -o pipefail
+            echo "=== 1/3 اختبار التكامل على المحاكي (مسار زر الاختبار الذاتي) ==="
+            flutter test integration_test --device-id emulator-5554 2>&1 | tee /tmp/it_log.txt
+
+            echo "=== 2/3 تثبيت نسخة الإصدار الفعلية والتحقق من إقلاعها ==="
+            adb uninstall app.ghadd.guard || true
+            adb install build/app/outputs/flutter-apk/app-release.apk
+            adb shell am start -W -n app.ghadd.guard/.MainActivity
+            sleep 14
+            PID=$(adb shell pidof app.ghadd.guard | tr -d '\r')
+            if [ -z "$PID" ]; then
+              echo "::error::نسخة الإصدار انهارت بعد الإقلاع على أندرويد 9!"
+              adb logcat -d | tail -120
+              exit 1
+            fi
+            echo "نسخة الإصدار تعمل على أندرويد 9 — PID: $PID"
+
+            echo "=== 3/3 التقاط أدلة مرئية وسجلات ==="
+            adb exec-out screencap -p > /tmp/ghadd-emulator.png || true
+            adb logcat -d > /tmp/logcat_full.txt || true
+            grep -aiE "ghadd|flutter|tflite" /tmp/logcat_full.txt | tail -150 > /tmp/logcat_ghadd.txt || true
+            echo "اكتمل إثبات المحاكي بنجاح ✓"
+
+      - name: كتابة الملخص في صفحة التشغيل
+        if: always()
+        run: |
+          {
+            echo "## نتيجة المحاكي السحابي (أندرويد 9 / API 28)"
+            echo ""
+            echo "- اختبار التكامل (سلسلة الكشف): انظر خطوة «تشغيل المحاكي»"
+            echo "- نسخة الإصدار: تثبيت + إقلاع + بقاء عملية حيّة"
+            echo "- الأدلة: عنصر «emulator-proof» أدناه (لقطة شاشة + سجلات)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: رفع أدلة التشغيل (لقطة الشاشة + السجلات)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-proof
+          path: |
+            /tmp/ghadd-emulator.png
+            /tmp/logcat_ghadd.txt
+          if-no-files-found: ignore

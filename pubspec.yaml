@@ -25,6 +25,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # اختبارات التكامل على محاكي أندرويد حقيقي (سير عمل المحاكي السحابي) —
+  # اعتمادات تطوير فقط: لا تدخل نسخة الإصدار (path_provider يُستخدم لمجلد مؤقت في الاختبار)
+  integration_test:
+    sdk: flutter
+  path_provider: ^2.1.4
 
 flutter:
   uses-material-design: true
