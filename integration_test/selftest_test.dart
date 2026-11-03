@@ -185,7 +185,7 @@ void main() {
       // مربعات فوق العتبة (BC-safe) — والصورة الرمادية الساكنة يجب ألا تُنتج
       // أي مربع أصلًا (فحص الإيجابيات الكاذبة البنيوية على إطار بريء).
       final dets = regScan.detections;
-      expect(dets == null || dets!.isEmpty, isTrue,
+      expect(dets == null || dets.isEmpty, isTrue,
           reason: 'صورة رمادية ساكنة أنتجت ${dets?.length ?? 0} مربعًا — إيجابية كاذبة بنيوية في فك YOLO');
       debugPrint('[SELFTEST] مرحلة 6 ✓: الكاشف مكتمل ومربعات الرمادية = 0 — سلسلة المناطق سليمة');
     },
