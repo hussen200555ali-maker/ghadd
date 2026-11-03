@@ -34,6 +34,16 @@ object GuardPrefs {
     fun setThreshold(ctx: Context, value: Double) =
         sp(ctx).edit().putLong("threshold", value.toRawBits()).apply()
 
+    /**
+     * التغطية الموسّعة (افتراضيًا مفعّلة بطلب المستخدم): تخفض حد الكشف الفعلي
+     * ليمسك المحتوى غير المحتشم (أجساد/مكشوف) وليس الإباحي الصريح فقط.
+     * النموذج ثنائي (آمن/غير آمن) — فالتوسعة تعني عتبة أقل (0.45) مع احتمال إزعاج أعلى.
+     */
+    fun expanded(ctx: Context): Boolean = sp(ctx).getBoolean("expanded", true)
+
+    fun setExpanded(ctx: Context, value: Boolean) =
+        sp(ctx).edit().putBoolean("expanded", value).apply()
+
     fun isWhitelisted(ctx: Context, packageName: String): Boolean =
         sp(ctx).getStringSet("whitelist", emptySet())?.contains(packageName) ?: false
 

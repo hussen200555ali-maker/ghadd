@@ -1,7 +1,7 @@
 name: ghadd
 description: نموذج أولي — حماية بصرية طوعية تعمل على الجهاز بالكامل، بلا صلاحية INTERNET (وثيقة الجدوى، الملحق أ)
 publish_to: "none"
-version: 0.2.1
+version: 0.2.2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -21,3 +21,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # نموذج الكشف مدمج داخل الـAPK نفسه — لا تنزيل ولا شبكة إطلاقًا
+    # (سبب جوهري: حزمة nsfw_detect تنزّل نماذجها افتراضيًا من الشبكة،
+    #  وهو مستحيل في تطبيق بلا صلاحية INTERNET)
+    - assets/models/nsfw.tflite

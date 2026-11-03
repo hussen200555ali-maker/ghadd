@@ -73,11 +73,13 @@ class ProjectionService : Service() {
         }
 
         ProjectionCaptureEngine.start(applicationContext, rc, data)
+        GuardLog.add("خدمة العرض الأمامية بدأت — محرك الالتقاط يُنشأ الآن")
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         ProjectionCaptureEngine.stop()
+        GuardLog.add("خدمة العرض توقفت — مسار الالتقاط البديل مُفرَّغ")
         super.onDestroy()
     }
 

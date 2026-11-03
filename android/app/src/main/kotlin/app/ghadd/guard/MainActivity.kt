@@ -53,6 +53,7 @@ class MainActivity : FlutterActivity() {
                         (args["whitelist"] as? List<*>)?.let {
                             GuardPrefs.setWhitelist(this, it.filterNotNull().map(Any::toString).toSet())
                         }
+                        (args["expanded"] as? Boolean)?.let { GuardPrefs.setExpanded(this, it) }
                         result.success(true)
                     }
                     "stats" -> result.success(GuardPrefs.stats(this))
@@ -122,6 +123,43 @@ class MainActivity : FlutterActivity() {
                                 "sdk" to Build.VERSION.SDK_INT
                             )
                         )
+                    }
+                    "prepareModel" -> {
+                        // تجهيز النموذج المدمج (نسخ من الأصول إلى filesDir) — أساس مسار الكشف
+                        val path = GuardModelStore.ensure(this)
+                        result.success(
+                            mapOf(
+                                "ok" to (path != null),
+                                "path" to (path ?: ""),
+                                "modelId" to GuardModelStore.MODEL_ID
+                            )
+                        )
+                    }
+                    "guardLogs" -> result.success(GuardLog.all())
+                    "logFromDart" -> {
+                        GuardLog.add(call.arguments?.toString() ?: "")
+                        result.success(true)
+                    }
+                    "testCapture" -> {
+                        // اختبار مباشر لمسار الالتقاط من شاشة التشخيص
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            result.success(
+                                mapOf(
+                                    "ok" to false,
+                                    "note" to "على أندرويد 11+ يكون الالتقاط عبر خدمة الوصول مباشرة — استخدم زر اختبار الكشف"
+                                )
+                            )
+                        } else {
+                            val started = System.currentTimeMillis()
+                            ProjectionCaptureEngine.capture { jpeg ->
+                                val payload = mapOf(
+                                    "ok" to (jpeg != null),
+                                    "bytes" to (jpeg?.size ?: 0),
+                                    "ms" to (System.currentTimeMillis() - started)
+                                )
+                                runOnUiThread { result.success(payload) }
+                            }
+                        }
                     }
                     else -> result.notImplemented()
                 }

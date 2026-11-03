@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app.dart';
 import '../services/native_bridge.dart';
+import 'diagnostics_screen.dart';
 import 'settings_screen.dart';
 
 /// الشاشة الرئيسية: معالج إعداد من ثلاث خطوات + مفتاح الحماية + عدادات محلية.
@@ -94,7 +95,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('غَضّ')),
+      appBar: AppBar(
+        title: const Text('غَضّ'),
+        actions: [
+          IconButton(
+            tooltip: 'التشخيص',
+            icon: const Icon(Icons.monitor_heart_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DiagnosticsScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Directionality(
         textDirection: TextDirection.rtl,
         child: ListView(

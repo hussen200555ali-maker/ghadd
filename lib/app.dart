@@ -82,6 +82,11 @@ class _BootstrapState extends State<Bootstrap> {
     super.initState();
     GuardSettings.load().then((_) {
       if (mounted) setState(() => _consented = GuardSettings.consent);
+      // تجهيز النموذج المدمج وتسخينه فور الإقلاع (بالتوازي مع الواجهة) —
+      // حتى يكون أول فحص حقيقي سريعًا، ويظهر أي عطل في سجل التشخيص مبكرًا
+      GuardBrain.ensure().then((ok) async {
+        if (ok) await GuardBrain.warmUp();
+      });
     });
   }
 

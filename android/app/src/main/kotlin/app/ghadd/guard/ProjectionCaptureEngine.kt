@@ -120,9 +120,11 @@ object ProjectionCaptureEngine {
                 r.surface, null, handler
             )
             Log.i(TAG, "محرك الالتقاط البديل جاهز — ${size.x}x${size.y}")
+            GuardLog.add("محرك الالتقاط البديل جاهز — ${size.x}x${size.y}")
             true
         } catch (t: Throwable) {
             Log.e(TAG, "تعذر بدء مسار MediaProjection: ${t.message}")
+            GuardLog.add("✗ فشل بدء محرك الالتقاط: ${t.message}")
             release()
             false
         }

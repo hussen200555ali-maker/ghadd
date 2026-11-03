@@ -59,11 +59,13 @@ class GuardAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        GuardLog.add("خدمة إمكانية الوصول متصلة — جاهزة للالتقاط")
         Log.i(TAG, "خدمة إمكانية الوصول متصلة — حماية غَضّ جاهزة")
     }
 
     override fun onDestroy() {
         instance = null
+        GuardLog.add("خدمة إمكانية الوصول انقطعت")
         super.onDestroy()
     }
 
@@ -163,26 +165,38 @@ class GuardAccessibilityService : AccessibilityService() {
         MethodChannel(eng.dartExecutor.binaryMessenger, CHANNEL)
             .invokeMethod(
                 "analyze",
-                mapOf("bytes" to jpeg, "threshold" to GuardPrefs.threshold(this), "pkg" to pkg),
+                mapOf(
+                    "bytes" to jpeg,
+                    "threshold" to GuardPrefs.threshold(this),
+                    "expanded" to GuardPrefs.expanded(this),
+                    "pkg" to pkg
+                ),
                 object : MethodChannel.Result {
                     override fun success(result: Any?) {
                         if (!isFresh(g)) {
                             Log.i(TAG, "نتيجة متأخرة تُهمل — عدّاد التوليد/المهلة (السؤال 3)")
                             return
                         }
-                        val unsafe = (result as? Map<*, *>)?.get("unsafe") as? Boolean ?: false
+                        val map = result as? Map<*, *>
+                        val unsafe = map?.get("unsafe") as? Boolean ?: false
+                        val score = map?.get("score")
                         if (unsafe) {
+                            GuardLog.add("⚠ كشف محتوى غير لائق في $pkg — الدرجة $score — عرض الطمس")
                             GuardPrefs.incrementBlocked(this@GuardAccessibilityService, pkg)
                             OverlayController.show(this@GuardAccessibilityService)
+                        } else {
+                            GuardLog.add("فحص $pkg — آمن (أعلى درجة $score)")
                         }
                     }
 
                     override fun error(code: String, msg: String?, details: Any?) {
                         Log.w(TAG, "خطأ كشف: $code / $msg")
+                        GuardLog.add("✗ خطأ كشف في $pkg: $code / $msg")
                     }
 
                     override fun notImplemented() {
                         Log.w(TAG, "قناة الكشف غير مهيأة بعد")
+                        GuardLog.add("✗ قناة الكشف غير مهيأة بعد — محرك guardMain لم يبدأ")
                     }
                 }
             )

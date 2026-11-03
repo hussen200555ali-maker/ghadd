@@ -57,6 +57,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _thresholdHint(GuardSettings.threshold),
               style: const TextStyle(color: GuardTheme.muted, fontSize: 12.5),
             ),
+            const SizedBox(height: 8),
+            // التغطية الموسّعة — بطلب مالك التطبيق: تضم المحتوى غير المحتشم
+            // (أجساد مكشوفة/ضيقة) وليس الإباحي الصريح فقط، بعتبة فعليّة 0.45.
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: GuardTheme.tealDeep,
+              title: const Text('التغطية الموسّعة',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text(
+                'يمسك المحتوى غير المحتشم (أجساد مكشوفة/ضيقة، شاطئ…) وليس الصريح فقط — '
+                'بتخفيض حد الكشف الفعلي إلى 0.45. قد يزيد الإزعاج (طمس إضافي لمحتوى عادي) — أوقفه متى شئت.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              value: GuardSettings.expandedCoverage,
+              onChanged: (v) {
+                setState(() => GuardSettings.expandedCoverage = v);
+                _save();
+              },
+            ),
             const SizedBox(height: 22),
             const Text('القائمة البيضاء — حزم تطبيقات تُتجاهل بالكامل'),
             const Text(
