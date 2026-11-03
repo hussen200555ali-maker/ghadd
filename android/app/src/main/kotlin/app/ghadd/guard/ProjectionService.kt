@@ -21,8 +21,12 @@ import androidx.core.app.ServiceCompat
  *  2) تُبدأ هذه الخدمة الأمامية بإشعار دائم ظاهر — صدق الحالة.
  *  3) يُنشأ محرك الالتقاط داخل onStartCommand بعد startForeground مباشرة.
  *
- * START_NOT_STICKY مقصودة: التصريح نفسه لا يبقى بعد موت العملية، فإعادة
- * تشغيل صامتة ستكون خدمة بلا تصريح — الأصل أن يعيد المستخدم التأكيد بيد one.
+ * [0.3.3] سياسة «لا إيقاف أبدًا إلا بيدك»: الخدمة START_STICKY — إن قتل
+ * النظام/المصنع العملية تعيد تشغيلها تلقائيًا، ومحاولة إعادة التشغيل الصامتة
+ * (intent = null) لم تعد خدمة ميتة بلا تصريح كما في 0.3.1/0.3.2 بل لحظة إنقاذ:
+ * canGuard واضح → RecoveryNotifier يُطلق الاسترداد الصفري (حوار يؤكّد آليًا)
+ * أو إشعار الإنقاذ بنقرة — فلا تبقى الحماية عمياء أبدًا. ومسح التطبيق من
+ * «الأخيرة» لا يوقف الخدمة (onTaskRemoved يواصل العمل ويسجل ذلك).
  */
 class ProjectionService : Service() {
 
@@ -47,10 +51,24 @@ class ProjectionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val rc = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED)
-            ?: return START_NOT_STICKY
+        if (intent == null) {
+            // [0.3.3] أعاد النظام الخدمة بعد موت العملية (START_STICKY) — التوكن
+            // مات مع العملية بحكم النظام (لا يُخزّن أبدًا). لم نعد نصمت:
+            // إنقاذ فوري — استرداد صفري (حوار يؤكّد بلا لمستك) أو إشعار بنقرة.
+            // START_NOT_STICKY هنا مقصودة: الاستعادة تعيد تشغيلنا بتصريح حي
+            // عبر ProjectionService.start، وخدمة بلا تصريح لا معنى لبقائها.
+            GuardLog.add("أعاد النظام الخدمة بعد موت العملية — بدء إنقاذ الجلسة فورًا")
+            RecoveryNotifier.maybeNotify(this)
+            return START_NOT_STICKY
+        }
+        val rc = intent.getIntExtra("resultCode", Activity.RESULT_CANCELED)
         @Suppress("DEPRECATION")
-        val data = intent.getParcelableExtra<Intent>("data") ?: return START_NOT_STICKY
+        val data = intent.getParcelableExtra<Intent>("data")
+        if (data == null) {
+            // إطلاق بلا توكن (عطل في النداء) — ننهي بهدوء بدل خدمة معلقة بلا نوع
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         ensureChannel()
         val notification: Notification =
@@ -75,11 +93,23 @@ class ProjectionService : Service() {
         ProjectionCaptureEngine.start(applicationContext, rc, data)
         GuardLog.add("خدمة العرض الأمامية بدأت — محرك الالتقاط يُنشأ الآن")
         // [0.3.3] الإنقاذ الذاتي: حين تسقط الجلسة الحيّة (نقرة إيقاف/قتل النظام)
-        // يُطلق إشعار الاسترداد بضغطة — بشرط canGuard وبدون تكرار داخل نافذة 60 ث.
+        // يبدأ الإنقاذ لحظتها — استرداد صفري بلا لمستك (أو إشعار بنقرة إن أوقفته
+        // بيدك)، بشرط canGuard وبدون تكرار داخل نافذة 60 ث.
         ProjectionCaptureEngine.onSessionLost = {
             RecoveryNotifier.maybeNotify(this@ProjectionService)
         }
-        return START_NOT_STICKY
+        // [0.3.3] START_STICKY: قتل العملية يعيد الخدمة تلقائيًا — ومحاولة
+        // إعادة التشغيل الصامتة تمر أعلاه بمسار الإنقاذ لا بالصمت.
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // [0.3.3] وعد «لا إيقاف أبدًا إلا بيدك»: مسح التطبيق من «الأخيرة» لا
+        // يوقف الحماية — الخدمة الأمامية تكمل عملها، وأي موت لاحق للعملية
+        // يعالجه START_STICKY + الإنقاذ الذاتي (ملاحظة: بعض أغلفة المصنّعين
+        // كسامسونج تقتل العملية كلها عند المسح — عندها يتكفل مسار الإنقاذ نفسه).
+        GuardLog.add("أُزيل التطبيق من «الأخيرة» — الحماية تكمل عملها (إيقافها بيدك حصريًا)")
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

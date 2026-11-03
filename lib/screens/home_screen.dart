@@ -27,6 +27,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // [0.3.3] المصنّع (لبطاقة سامسونج المخصصة) + حارس الإنقاذ الذاتي لكل فتح
   String _manufacturer = '';
   bool _selfHealTried = false;
+  // [0.3.3] الاسترداد الصفري: سقوط الجلسة يُعالَج بلا لمسة منك (مفعّل افتراضيًا)
+  bool _autoRecovery = true;
 
   @override
   void initState() {
@@ -58,6 +60,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _batteryExempt = bat['exempt'] == true;
       _manufacturer = (bat['manufacturer'] ?? '').toString();
     } catch (_) {/* بلا قناة أصلية (اختبار): تبقى كما هي */}
+    // [0.3.3] حالة الاسترداد الصفري — من التفضيلات المحلية الأصلية
+    _autoRecovery = await GuardSystem.autoRecoveryStatus();
     // [0.3.3] الإنقاذ الذاتي عند فتح/عودة التطبيق: الحماية مفعّلة والجلسة
     // ساقطة على أندرويد 9/10 → نفتح حوار الاستعادة فورًا بدل اكتشافه بيدك.
     // مرة واحدة لكل فتح (لا مطاردة للمستخدم إن ألغى الحوار عمدًا).
@@ -257,11 +261,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text(
                     'أندرويد 9/10 يلتقط عبر هذا التصريح. الجلسة تعيش طالما العملية '
-                    'حية — وإذا سقطت (مسح التطبيق من الأخيرة، قتل النظام للخلفية، '
-                    'إعادة الإقلاع) يعيد النظام طلبها عمدًا (لا تُخزّن أبدًا). '
-                    '[0.3.3] إذا سقطت خارج التطبيق سيصلك إشعار «إنقاذ» — نقرة عليه '
-                    'ثم «سماح الآن» تعيدان الحماية فورًا، وعند فتح التطبيق يُفتح '
-                    'حوار الاستعادة تلقائيًا.',
+                    'حية — وإذا سقطت خارج التطبيق (قتل الخلفية، إعادة الإقلاع) '
+                    'يتكفّل «الاسترداد التلقائي» أسفله بعودتها بلا لمسة منك: '
+                    'حوار النظام يُفتح لحظتها ويُؤكّد آليًا — الحماية لا تتوقف '
+                    'أبدًا إلا بيدك.',
                     style: TextStyle(fontSize: 12.5),
                   ),
                   trailing: TextButton(
@@ -278,6 +281,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     },
                     child: Text(_projectionActive ? 'إعادة تأكيد' : 'تفعيل'),
                   ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // [0.3.3] الاسترداد الصفري — الأداة التي تجعل «النظام لا يوقفه أبدًا»:
+              // سقوط الجلسة خارج التطبيق يُعالَج لحظته: نشاط شفاف يفتح حوار
+              // النظام فوق ما كنت فيه، وخدمة الوصول تنقر «البدء الآن» آليًا
+              // (نافذة 45 ث، إعادة تأكيد لموافقتك السابقة لا قرار جديد).
+              // إيقاف الخيار يعيد الإنقاذ بإشعار تنقره بيدك.
+              Card(
+                child: SwitchListTile(
+                  activeThumbColor: GuardTheme.tealDeep,
+                  title: const Text('الاسترداد التلقائي — بلا لمسة منك',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text(
+                    'إذا سقطت جلسة الالتقاط خارج التطبيق: يُفتح حوار النظام '
+                    'لحظتها ويُؤكّد آليًا (خدمة الوصول تنقر «البدء الآن» — نفس '
+                    'موافقتك السابقة، بلا قرار جديد). هكذا لا تتوقف الحماية '
+                    'أبدًا بيد النظام — توقفها أنت فقط بالمفتاح. إيقاف هذا '
+                    'الخيار يعيد الإنقاذ بإشعار تنقره بيدك.',
+                    style: TextStyle(fontSize: 12.5),
+                  ),
+                  value: _autoRecovery,
+                  onChanged: (v) async {
+                    setState(() => _autoRecovery = v);
+                    await GuardSystem.setAutoRecovery(v);
+                  },
                 ),
               ),
             ],

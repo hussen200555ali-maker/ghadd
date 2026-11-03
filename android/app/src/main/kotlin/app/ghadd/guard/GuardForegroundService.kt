@@ -65,5 +65,13 @@ class GuardForegroundService : Service() {
         return START_STICKY // إعادة التشغيل التلقائية عند القتل — جوهر وعد "الدوام"
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // [0.3.3] وعد «لا إيقاف أبدًا إلا بيدك»: مسح التطبيق من «الأخيرة» لا
+        // يوقف خدمة الحالة الدائمة — تُكمل عملها، وأي موت لاحق للعملية يعيدها
+        // START_STICKY تلقائيًا.
+        GuardLog.add("أُزيل التطبيق من «الأخيرة» — إشعار الحالة يبقى والحماية تكمل")
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 }

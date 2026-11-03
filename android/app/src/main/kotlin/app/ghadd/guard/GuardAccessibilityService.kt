@@ -10,6 +10,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineGroup
@@ -74,6 +75,49 @@ class GuardAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() { /* لا شيء مطلوب */ }
 
+    /**
+     * [0.3.3] النقر التلقائي على «البدء الآن» في حوار الاسترداد — الاسترداد الصفري.
+     * تُقرأ شجرة النافذة النشطة هنا فقط (لحظة نافذة مسلّحة حديثة من حوارنا)،
+     * والهدف زر موافقة النظام (button1 في حوار MediaProjection، أو نص
+     * «البدء الآن» بأشهر صياغاته احتياطًا)، والنقر لا يجري إلا إن فشل كل
+     * شيء بأمان (استثناء → false بلا أي أثر).
+     */
+    private fun tryAutoConfirmConsent(): Boolean = try {
+        val root = rootInActiveWindow ?: return false
+        if (root.packageName?.toString() != "com.android.systemui") return false
+        var btn: AccessibilityNodeInfo? =
+            root.findAccessibilityNodeInfosByViewId("android:id/button1").firstOrNull()
+        if (btn == null) {
+            for (t in arrayOf("البدء الآن", "ابدأ الآن", "Start now")) {
+                btn = root.findAccessibilityNodeInfosByText(t)
+                    .firstOrNull { it.isClickable || it.isEnabled }
+                if (btn != null) break
+            }
+        }
+        val target = btn ?: return false
+        // النقر على العقدة القابلة للنقر — تصعد للأب إن لم تكن الورقة قابلة
+        var node: AccessibilityNodeInfo? = target
+        var clicked = false
+        var depth = 0
+        while (node != null && depth < 5) {
+            if (node.isClickable) {
+                clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                break
+            }
+            node = node.parent
+            depth++
+        }
+        if (!clicked) clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        if (clicked) {
+            RecoveryNotifier.disarmAutoConsent() // مهمة واحدة لكل تسليح
+            GuardLog.add("⚡ استرداد صفري: نُقر «البدء الآن» آليًا — الحماية تُستعاد بلا لمسة منك")
+        }
+        clicked
+    } catch (t: Throwable) {
+        Log.w(TAG, "النقر التلقائي على حوار الاسترداد تعذر: ${t.message}")
+        false
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !GuardPrefs.canGuard(this)) return
         val type = event.eventType
@@ -83,6 +127,21 @@ class GuardAccessibilityService : AccessibilityService() {
 
         val pkg = event.packageName?.toString() ?: return
         if (pkg == packageName) return                  // تجاهل نفسه
+
+        // [0.3.3] الاسترداد الصفري: حين نكون قد أطلقنا حوار استرداد النظام
+        // بأنفسنا (نافذة مسلّحة 45 ثانية من RecoveryNotifier) تظهر نافذة
+        // systemui بزر «البدء الآن» — ننقره آليًا. النقر إعادة تأكيد لنفس
+        // الموافقة التي منحتها بيدك لحظة التفعيل، ومقيّد بثلاثة أقفال معًا:
+        // نافذة مسلّحة حديثة + خيار الاسترداد مفعّل بيدك + الحماية مفعّلة
+        // (canGuard محقّق أعلاه). لا قراءة لشجرة النوافذ ولا نقر أبدًا
+        // خارج هذا المشهد بالضبط.
+        if (pkg == "com.android.systemui" &&
+            RecoveryNotifier.autoConsentFresh() &&
+            GuardPrefs.autoRecovery(this)
+        ) {
+            if (tryAutoConfirmConsent()) return
+        }
+
         if (GuardPrefs.isWhitelisted(this, pkg)) return // القائمة البيضاء (4.1)
         lastPackage = pkg
 

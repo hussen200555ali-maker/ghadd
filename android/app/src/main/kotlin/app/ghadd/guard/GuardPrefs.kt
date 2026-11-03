@@ -54,6 +54,19 @@ object GuardPrefs {
     fun setRegionMode(ctx: Context, value: Boolean) =
         sp(ctx).edit().putBoolean("region_mode", value).apply()
 
+    /**
+     * [0.3.3] الاسترداد الصفري (افتراضيًا مفعّل — طلب المالك الصريح: «لا يوقفه
+     * النظام أبدًا حتى يوقفه المستخدم يدويًا»): حين تسقط جلسة الالتقاط خارج
+     * التطبيق يُفتح حوار النظام تلقائيًا ويؤكَّد بلا لمسة منك — خدمة الوصول
+     * تنقر «البدء الآن» داخل نافذة حوارنا فقط، وهي إعادة تأكيد لنفس الموافقة
+     * التي منحتها بيدك لحظة التفعيل، لا قرارًا جديدًا. إيقاف هذا الخيار يعيد
+     * الإنقاذ بإشعار heads-up تنقره بيدك (مسار الإنقاذ بنقرة).
+     */
+    fun autoRecovery(ctx: Context): Boolean = sp(ctx).getBoolean("auto_recovery", true)
+
+    fun setAutoRecovery(ctx: Context, value: Boolean) =
+        sp(ctx).edit().putBoolean("auto_recovery", value).apply()
+
     fun isWhitelisted(ctx: Context, packageName: String): Boolean =
         sp(ctx).getStringSet("whitelist", emptySet())?.contains(packageName) ?: false
 

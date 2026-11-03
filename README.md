@@ -19,7 +19,7 @@
 ## البنية (ملخص وثيقة الردّ التقني)
 
 - **Flutter**: الشاشات (الإفصاح، الرئيسية، الإعدادات) + محرك الكشف `nsfw_detect` في محرك خلفي.
-- **Kotlin**: `GuardAccessibilityService` (debounce 400ms + takeScreenshot أو مسار بديل) · `GuardForegroundService` (START_STICKY) · `ProjectionCaptureEngine` + `ProjectionService` (مسار أندرويد 9/10) · `OverlayController` · `GuardPrefs`.
+- **Kotlin**: `GuardAccessibilityService` (debounce 400ms + takeScreenshot أو مسار بديل + النقر الآلي المقيّد لحوار الاسترداد) · `GuardForegroundService` (START_STICKY) · `ProjectionCaptureEngine` + `ProjectionService` (مسار أندرويد 9/10 — START_STICKY + إنقاذ تلقائي) · `RecoveryNotifier` + `RestoreActivity` + `BootReceiver` (الاسترداد الصفري) · `OverlayController` · `GuardPrefs`.
 - **القنوات**: `ghadd/control` (إعدادات وموافقة) · `ghadd/system` (تشغيل/إيقاف ومنح) · `ghadd/analyze` (بايتات اللقطة → قرار).
 - **قاعدة الذيل الأخير**: قرار الحجب يُنفَّذ في Kotlin — الحماية قائمة حتى لو قُتلت واجهة Flutter.
 
@@ -28,7 +28,7 @@
 | إصدار أندرويد | مسار الالتقاط | ملاحظات |
 |---|---|---|
 | 11+ (API 30+) | `takeScreenshot` الرسمي لخدمة الوصول | المسار الأساسي |
-| 9 و10 (API 28/29) | تصريح عرض الشاشة (MediaProjection) | حوار النظام نفسه — الإطارات في الذاكرة فقط، ويُعاد تأكيده بعد كل إقلاع |
+| 9 و10 (API 28/29) | تصريح عرض الشاشة (MediaProjection) | حوار النظام نفسه — الإطارات في الذاكرة فقط، ويُعاد تأكيده بعد كل إقلاع. منذ 0.3.3: «لا إيقاف أبدًا إلا بيدك» — سقوط الجلسة يُعالَج بالاسترداد الصفري (حوار يُفتح ويُؤكّد آليًا) أو إشعار إنقاذ، والتفصيل في PRIVACY.md |
 
 ## التشغيل محليًا
 
@@ -74,8 +74,12 @@ lib/
   screens/settings_screen.dart  # العتبة + القائمة البيضاء
   services/native_bridge.dart   # المهايئ الوحيد لـnsfw_detect (scanBytes في RAM)
 android/.../app/ghadd/guard/
-  GuardAccessibilityService.kt  # الالتقاط + مسار RAM + التوليد/المهلة
-  GuardForegroundService.kt     # الإشعار الدائم + START_STICKY
+  GuardAccessibilityService.kt  # الالتقاط + مسار RAM + التوليد/المهلة + النقر الآلي المقيّد
+  GuardForegroundService.kt     # الإشعار الدائم + START_STICKY + عدم الإيقاف عند مسح «الأخيرة»
+  ProjectionService.kt          # خدمة الالتقاط البديل (9/10) + الإنقاذ عند إعادة تشغيل النظام
+  RecoveryNotifier.kt           # الاسترداد الصفري + إشعار الإنقاذ
+  RestoreActivity.kt            # النشاط الشفاف لفتح حوار الاسترداد تلقائيًا
+  BootReceiver.kt               # بدء الإنقاذ بعد إعادة إقلاع الجهاز
   OverlayController.kt          # طبقة الحجب
   GuardPrefs.kt                 # مرآة الإعدادات + بوابة الموافقة
 .github/workflows/ci.yml        # البوابات الثلاث

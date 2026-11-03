@@ -154,6 +154,32 @@ class GuardSystem {
     }
   }
 
+  /// [0.3.3] حالة الاسترداد الصفري: هل سقوط جلسة الالتقاط يُعالَج بلا لمسة
+  /// منك؟ (يُفتح حوار النظام لحظتها ويؤكَّد آليًا عبر خدمة الوصول — نفس
+  /// موافقتك السابقة). افتراضيًا مفعّل.
+  static Future<bool> autoRecoveryStatus() async {
+    try {
+      final raw = await _channel.invokeMethod('autoRecoveryStatus');
+      return raw is Map && raw['enabled'] == true;
+    } on PlatformException {
+      return true;
+    } on MissingPluginException {
+      return true;
+    }
+  }
+
+  /// [0.3.3] تفعيل/إيقاف الاسترداد الصفري بيدك. إيقافه يعيد الإنقاذ
+  /// بإشعار heads-up تنقره (مسار الإنقاذ بنقرة واحدة).
+  static Future<void> setAutoRecovery(bool value) async {
+    try {
+      await _channel.invokeMethod('setAutoRecovery', value);
+    } on PlatformException {
+      /* تجاهل مقصود — القناة الأصلية غير متاحة في بيئات الاختبار */
+    } on MissingPluginException {
+      /* كذلك */
+    }
+  }
+
   /// الحالة الحقيقية للصلاحيات من النظام (لا ذاكرة الواجهة):
   /// accessibility = خدمة الوصول مُفعّلة فعلًا في الإعدادات الآمنة،
   /// overlay = العرض فوق التطبيقات ممنوح، sdk = إصدار النظام للتفرعات.

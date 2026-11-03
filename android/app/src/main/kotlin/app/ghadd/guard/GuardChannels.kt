@@ -62,6 +62,13 @@ object GuardChannels {
                     result.success(true)
                 }
                 "stopGuard" -> {
+                    // [0.3.3] إيقافك اليدوي هو الإيقاف الكامل الوحيد: خدمة الحالة
+                    // + خدمة الالتقاط معًا (توكن الجلسة يُفرَّغ فورًا في
+                    // ProjectionService.onDestroy — وعد الخصوصية «زر التطبيق
+                    // يوقف التصريح» صار حرفيًا). النظام وحده لا يستطيع هذا
+                    // الإيقاف ولا غيره: كل قتل/نوم/مسح من «الأخيرة» يُعالَج
+                    // بـSTART_STICKY والاسترداد الصفري فتعود الحماية وحدها.
+                    ProjectionService.stop(context)
                     GuardForegroundService.stop(context)
                     result.success(true)
                 }
@@ -186,6 +193,26 @@ object GuardChannels {
                         } catch (_: Throwable) { /* لا شيء يُفتح — نرد failed */ }
                     }
                     result.success(mapOf("opened" to (how != "failed"), "how" to how))
+                }
+                "autoRecoveryStatus" -> result.success(
+                    // [0.3.3] الاسترداد الصفري: هل الحماية تستعيد جلسة الالتقاط
+                    // بلا لمسة منك؟ الحقيقة من التفضيلات المحلية (مرآة الواجهة).
+                    mapOf(
+                        "enabled" to GuardPrefs.autoRecovery(context),
+                        "sdk" to Build.VERSION.SDK_INT
+                    )
+                )
+                "setAutoRecovery" -> {
+                    // [0.3.3] تفعيل/إيقاف الاسترداد الصفري بيدك من البطاقة.
+                    // النداء يجلب قيمة منطقية مباشرة (invokeMethod('...', bool)).
+                    val value = call.arguments as? Boolean
+                        ?: (call.arguments as? Map<*, *>)?.get("value") == true
+                    GuardPrefs.setAutoRecovery(context, value)
+                    GuardLog.add(
+                        if (value) "الاسترداد الصفري مفعّل بيدك — سقوط الجلسة يُعالَج بلا لمستك"
+                        else "الاسترداد الصفري موقوف بيدك — الإنقاذ بإشعار تنقره بيدك"
+                    )
+                    result.success(value)
                 }
                 "permissionStatus" -> {
                     // الحالة الحقيقية من النظام — لا اعتماد على ذاكرة الواجهة:

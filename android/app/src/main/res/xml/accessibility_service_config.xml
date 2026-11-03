@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- إعدادات خدمة إمكانية الوصول: استيقاظ بالأحداث فقط (بلا حلقة استطلاع)
-     وcanTakeScreenshot مطلوب لالتقاط الإطار عبر takeScreenshot (API 30+) -->
+     وcanTakeScreenshot مطلوب لالتقاط الإطار عبر takeScreenshot (API 30+)
+     وcanRetrieveWindowContent مطلوب حصريًا للاسترداد الصفري [0.3.3]: قراءة
+     زر «البدء الآن» في حوار استرداد النظام لحظة نافذتنا المسلّحة فقط (45 ث)
+     — لا قراءة لشجرة النوافذ في أي سياق آخر، والنقر إعادة تأكيد لموافقة
+     المستخدم نفسها (موثق في PRIVACY.md) -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault"
     android:canTakeScreenshot="true"
+    android:canRetrieveWindowContent="true"
     android:notificationTimeout="120"
     android:description="@string/accessibility_description" />
