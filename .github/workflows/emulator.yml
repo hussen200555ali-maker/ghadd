@@ -26,7 +26,7 @@ jobs:
   emulator-proof:
     name: "محاكي أندرويد 9 — إثبات سلسلة الكشف"
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +53,14 @@ jobs:
       - name: بناء نسخة الإصدار مسبقًا
         run: flutter build apk --release
 
+      # تمكين KVM: بدونه يطلق المشغّل المحاكي بـ -accel off (محاكاة برمجية ×100
+      # أبطأ — سبب استدلال الدقائق واختناق System UI في تشغيلتَي 12:52 و15:59)
+      - name: تمكين KVM للمحاكي (تسريع عتادي بدل المحاكاة البرمجية)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: تشغيل المحاكي وتنفيذ الإثبات
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -63,31 +71,21 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 3072
           disable-animations: true
           script: |
-            set -eo pipefail
-            # تسجيل logcat مستمر منذ اللحظة الأولى — الأدلة تبقى متاحة حتى عند التعليق
+            # [تنبيه بنية] المشغّل ينفّذ السكربت سطرًا سطرًا عبر sh -c — لا multi-line
+            # if/fi، وset -e لا ينتقل بين الأسطر — لذلك كل سطر يحمل حكمه بنفسه،
+            # وفشل الاختبار يُكشف بمقارنة نتيجته في السطر نفسه (exit 5).
+            # سجل مستمر منذ أول لحظة (عملية خلفية تبقى حيّة عبر الأسطر):
             adb logcat -v time > /tmp/logcat_full.txt 2>&1 &
-            LOGCAT_PID=$!
-            # فخ الأدلة: عند أي فشل/إيقاف تُلتقط الشاشة، ويُغلق السجل المستمر ويُستخرج ملخصه
-            trap 'adb exec-out screencap -p > /tmp/ghadd-emulator.png 2>/dev/null; kill $LOGCAT_PID 2>/dev/null; sleep 1; grep -aiE "ghadd|flutter|tflite|nsfw|ANR" /tmp/logcat_full.txt | tail -300 > /tmp/logcat_ghadd.txt 2>/dev/null' EXIT INT TERM
             echo "=== 1/3 اختبار التكامل على المحاكي (مسار زر الاختبار الذاتي) ==="
-            # سقف صارم 16 دقيقة: تشغيلة 15:59 علِقت 55 د لأن المحاكي نفسه اختنق
-            # (System UI isn't responding — فقر موارد) رغم نجاح السلسلة كاملة —
-            # الآن نقطع التعليق ونفشل بشهادة واضحة بدل حرق المهلة الكلية 75 د
-            timeout --signal=INT --kill-after=30s 16m flutter test integration_test --device-id emulator-5554 2>&1 | tee /tmp/it_log.txt
-
+            # سقف 45 د يغطي حتى محاكيًا بلا تسريع؛ نجاح الاختبار يُحسم بنفس السطر:
+            timeout --signal=INT --kill-after=60s 45m flutter test integration_test --device-id emulator-5554 2>&1 | tee /tmp/it_log.txt; grep -q "All tests passed" /tmp/it_log.txt || exit 5
             echo "=== 2/3 تثبيت نسخة الإصدار الفعلية والتحقق من إقلاعها ==="
             adb uninstall app.ghadd.guard || true
             adb install build/app/outputs/flutter-apk/app-release.apk
             adb shell am start -W -n app.ghadd.guard/.MainActivity
             sleep 20
-            PID=$(adb shell pidof app.ghadd.guard | tr -d '\r')
-            if [ -z "$PID" ]; then
-              echo "::error::نسخة الإصدار انهارت بعد الإقلاع على أندرويد 9!"
-              tail -120 /tmp/logcat_full.txt
-              exit 1
-            fi
+            PID=$(adb shell pidof app.ghadd.guard | tr -d '\r'); if [ -z "$PID" ]; then echo "::error::نسخة الإصدار انهارت بعد الإقلاع على أندرويد 9!"; exit 6; fi
             echo "نسخة الإصدار تعمل على أندرويد 9 — PID: $PID"
-
             echo "=== 3/3 التقاط أدلة مرئية وسجلات ==="
             adb exec-out screencap -p > /tmp/ghadd-emulator.png || true
             grep -aiE "ghadd|flutter|tflite|nsfw" /tmp/logcat_full.txt | tail -300 > /tmp/logcat_ghadd.txt || true

@@ -78,8 +78,8 @@ void main() {
             assetPath: preparedPath,
             inputSize: 224,
           ))
-          .timeout(const Duration(minutes: 3),
-              onTimeout: () => throw StateError('علِق > المهلة: registerModel علِق >3د'));
+          .timeout(const Duration(minutes: 10),
+              onTimeout: () => throw StateError('علِق > المهلة: registerModel علِق >10د'));
       expect(regPath, isNotEmpty, reason: 'registerModel يجب أن يعيد المسار المتحقق منه');
       debugPrint('[SELFTEST] مرحلة 1 ✓: $regPath');
 
@@ -95,8 +95,8 @@ void main() {
       debugPrint('[SELFTEST] مرحلة 3: أول scanBytes…');
       final result = await NsfwDetector.instance
           .scanBytes(GuardBrain.warmupJpeg, modelId: modelId, confidenceThreshold: 0.7)
-          .timeout(const Duration(minutes: 3),
-              onTimeout: () => throw StateError('علِق > المهلة: أول scanBytes علِق >3د'));
+          .timeout(const Duration(minutes: 10),
+              onTimeout: () => throw StateError('علِق > المهلة: أول scanBytes علِق >10د'));
       final labels = result.labels;
       expect(labels, isNotEmpty, reason: 'الاستدلال أعاد لا فئات — مخرجات النموذج مقروءة خطأ');
       debugPrint('[SELFTEST] مرحلة 3 ✓: ${labels.length} فئة');
@@ -126,8 +126,8 @@ void main() {
         GuardBrain.warmupJpeg,
         0.7,
         expanded: true,
-      ).timeout(const Duration(minutes: 3),
-          onTimeout: () => throw StateError('علِق > المهلة: analyzeBytes علِق >3د'));
+      ).timeout(const Duration(minutes: 10),
+          onTimeout: () => throw StateError('علِق > المهلة: analyzeBytes علِق >10د'));
       expect(verdict['unsafe'], isFalse,
           reason: 'حكم المسار الإنتاجي: رمادية ساكنة = آمن، حصلنا على ${verdict['unsafe']}');
       expect(verdict['score'], inInclusiveRange(0.0, 1.0));
@@ -138,15 +138,15 @@ void main() {
       debugPrint('[SELFTEST] مرحلة 5: scanBytes ثانية (ثبات)…');
       final b = await NsfwDetector.instance
           .scanBytes(GuardBrain.warmupJpeg, modelId: modelId, confidenceThreshold: 0.7)
-          .timeout(const Duration(minutes: 3),
-              onTimeout: () => throw StateError('علِق > المهلة: scanBytes الثانية علِقت >3د — انسداد في محرك الاستدلال'));
+          .timeout(const Duration(minutes: 10),
+              onTimeout: () => throw StateError('علِق > المهلة: scanBytes الثانية علِقت >10د — انسداد في محرك الاستدلال'));
       final sa = (result.labels.first.confidence as num).toDouble();
       final sb = (b.labels.first.confidence as num).toDouble();
       expect((sa - sb).abs(), lessThan(0.01),
           reason: 'نتيجة الاستدلال غير مستقرة بين نداءين متتاليين على نفس المدخل');
       debugPrint('[SELFTEST] مرحلة 5 ✓: $sa ≈ $sb — السلسلة كلها سليمة');
     },
-    timeout: const Timeout(Duration(minutes: 8)),
+    timeout: const Timeout(Duration(minutes: 25)),
   );
 }
 
