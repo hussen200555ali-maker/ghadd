@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:nsfw_detect/nsfw_detect.dart';
 
 import '../app.dart';
