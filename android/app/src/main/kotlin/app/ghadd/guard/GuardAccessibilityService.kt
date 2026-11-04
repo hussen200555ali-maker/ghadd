@@ -82,40 +82,42 @@ class GuardAccessibilityService : AccessibilityService() {
      * «البدء الآن» بأشهر صياغاته احتياطًا)، والنقر لا يجري إلا إن فشل كل
      * شيء بأمان (استثناء → false بلا أي أثر).
      */
-    private fun tryAutoConfirmConsent(): Boolean = try {
-        val root = rootInActiveWindow ?: return false
-        if (root.packageName?.toString() != "com.android.systemui") return false
-        var btn: AccessibilityNodeInfo? =
-            root.findAccessibilityNodeInfosByViewId("android:id/button1").firstOrNull()
-        if (btn == null) {
-            for (t in arrayOf("البدء الآن", "ابدأ الآن", "Start now")) {
-                btn = root.findAccessibilityNodeInfosByText(t)
-                    .firstOrNull { it.isClickable || it.isEnabled }
-                if (btn != null) break
+    private fun tryAutoConfirmConsent(): Boolean {
+        return try {
+            val root = rootInActiveWindow ?: return false
+            if (root.packageName?.toString() != "com.android.systemui") return false
+            var btn: AccessibilityNodeInfo? =
+                root.findAccessibilityNodeInfosByViewId("android:id/button1").firstOrNull()
+            if (btn == null) {
+                for (t in arrayOf("البدء الآن", "ابدأ الآن", "Start now")) {
+                    btn = root.findAccessibilityNodeInfosByText(t)
+                        .firstOrNull { it.isClickable || it.isEnabled }
+                    if (btn != null) break
+                }
             }
-        }
-        val target = btn ?: return false
-        // النقر على العقدة القابلة للنقر — تصعد للأب إن لم تكن الورقة قابلة
-        var node: AccessibilityNodeInfo? = target
-        var clicked = false
-        var depth = 0
-        while (node != null && depth < 5) {
-            if (node.isClickable) {
-                clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                break
+            val target = btn ?: return false
+            // النقر على العقدة القابلة للنقر — تصعد للأب إن لم تكن الورقة قابلة
+            var node: AccessibilityNodeInfo? = target
+            var clicked = false
+            var depth = 0
+            while (node != null && depth < 5) {
+                if (node.isClickable) {
+                    clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    break
+                }
+                node = node.parent
+                depth++
             }
-            node = node.parent
-            depth++
+            if (!clicked) clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (clicked) {
+                RecoveryNotifier.disarmAutoConsent() // مهمة واحدة لكل تسليح
+                GuardLog.add("⚡ استرداد صفري: نُقر «البدء الآن» آليًا — الحماية تُستعاد بلا لمسة منك")
+            }
+            clicked
+        } catch (t: Throwable) {
+            Log.w(TAG, "النقر التلقائي على حوار الاسترداد تعذر: ${t.message}")
+            false
         }
-        if (!clicked) clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        if (clicked) {
-            RecoveryNotifier.disarmAutoConsent() // مهمة واحدة لكل تسليح
-            GuardLog.add("⚡ استرداد صفري: نُقر «البدء الآن» آليًا — الحماية تُستعاد بلا لمسة منك")
-        }
-        clicked
-    } catch (t: Throwable) {
-        Log.w(TAG, "النقر التلقائي على حوار الاسترداد تعذر: ${t.message}")
-        false
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
