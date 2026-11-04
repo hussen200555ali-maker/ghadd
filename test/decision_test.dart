@@ -45,6 +45,35 @@ void main() {
       expect(GuardThreshold.isUnsafeFromSignals(0.46, 0.45), isTrue);
     });
 
+    test('قناع الصدر يمتد إلى الجذع وأعلى الفخذين ويبقى داخل الصورة', () {
+      final mask = SensitiveBodyMask.expand(
+        label: 'NIPPLE',
+        x: 0.45,
+        y: 0.31,
+        width: 0.10,
+        height: 0.06,
+      );
+      expect(mask[0], greaterThanOrEqualTo(0.0));
+      expect(mask[1], lessThanOrEqualTo(0.20));
+      expect(mask[2], greaterThanOrEqualTo(0.54));
+      expect(mask[1] + mask[3], greaterThanOrEqualTo(0.78));
+      expect(mask[0] + mask[2], lessThanOrEqualTo(1.0));
+    });
+
+    test('قناع الحوض يمتد صعودًا إلى الجذع ويُقص عند حدود الإطار', () {
+      final mask = SensitiveBodyMask.expand(
+        label: 'PENIS',
+        x: 0.91,
+        y: 0.86,
+        width: 0.08,
+        height: 0.08,
+      );
+      expect(mask[0], greaterThanOrEqualTo(0.0));
+      expect(mask[1], lessThanOrEqualTo(0.42));
+      expect(mask[0] + mask[2], lessThanOrEqualTo(1.0));
+      expect(mask[1] + mask[3], lessThanOrEqualTo(1.0));
+    });
+
     test('أقرب قالب مسبق للمنزلق', () {
       expect(GuardThreshold.nearestPreset(0.72), 'متوازنة');
       expect(GuardThreshold.nearestPreset(0.88), 'صارمة');

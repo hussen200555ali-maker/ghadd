@@ -121,7 +121,11 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !GuardPrefs.canGuard(this)) return
+        if (event == null) return
+        if (!GuardPrefs.canGuard(this)) {
+            OverlayController.hideAll(this)
+            return
+        }
         val type = event.eventType
         if (type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
@@ -164,7 +168,10 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private fun captureAndAnalyze() {
         val svc = instance ?: return
-        if (!GuardPrefs.canGuard(this)) return
+        if (!GuardPrefs.canGuard(this)) {
+            OverlayController.hideAll(this)
+            return
+        }
 
         val g = ++generation
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -180,12 +187,17 @@ class GuardAccessibilityService : AccessibilityService() {
                     override fun onSuccess(result: ScreenshotResult) {
                         if (g != generation) return // نتيجة متخلفة — تُهمل
                         val jpeg = toJpegInMemory(result.hardwareBuffer, result.colorSpace)
-                        if (jpeg == null || g != generation) return
+                        if (jpeg == null) {
+                            if (g == generation) failClosed("تعذر تحويل لقطة الشاشة")
+                            return
+                        }
+                        if (g != generation) return
                         mainHandler.post { askDart(jpeg, g) }
                     }
 
                     override fun onFailure(errorCode: Int) {
                         Log.w(TAG, "فشل الالتقاط — رمز $errorCode (تطبيقات FLAG_SECURE ترفض ببساطة)")
+                        if (g == generation) failClosed("فشل التقاط الشاشة: $errorCode")
                     }
                 }
             )
@@ -200,6 +212,7 @@ class GuardAccessibilityService : AccessibilityService() {
             // المستخدم خارج التطبيق — المشهد الذي بلغه المالك.
             if (!ProjectionCaptureEngine.isReady) {
                 RecoveryNotifier.maybeNotify(this)
+                failClosed("جلسة التقاط الشاشة غير جاهزة")
                 return
             }
             ProjectionCaptureEngine.capture { jpeg, reason ->
@@ -208,6 +221,7 @@ class GuardAccessibilityService : AccessibilityService() {
                         lastCaptureReason = reason
                         GuardLog.add("✗ الالتقاط البديل: $reason")
                     }
+                    if (g == generation) failClosed(reason ?: "فشل الالتقاط البديل")
                     return@capture
                 }
                 lastCaptureReason = null
@@ -237,11 +251,19 @@ class GuardAccessibilityService : AccessibilityService() {
 
     /** الجسر إلى محرك nsfw_detect الذي يعمل داخل isolate خلفي مخصص (guardMain). */
     private fun askDart(jpeg: ByteArray, g: Int) {
-        val eng = ensureEngine() ?: return
+        val eng = ensureEngine() ?: run {
+            failClosed("محرك الكشف غير متاح")
+            return
+        }
         if (g != generation) return
         val pkg = lastPackage ?: "unknown"
         deadlineGen = g
         deadlineAt = System.currentTimeMillis() + WATCHDOG_MS
+        mainHandler.postDelayed({
+            if (g == generation && deadlineGen == g && System.currentTimeMillis() > deadlineAt) {
+                failClosed("تجاوز تحليل اللقطة مهلة ${WATCHDOG_MS}ms")
+            }
+        }, WATCHDOG_MS + 25L)
 
         MethodChannel(eng.dartExecutor.binaryMessenger, CHANNEL)
             .invokeMethod(
@@ -259,7 +281,11 @@ class GuardAccessibilityService : AccessibilityService() {
                             return
                         }
                         val map = result as? Map<*, *>
-                        val unsafe = map?.get("unsafe") as? Boolean ?: false
+                        val unsafe = map?.get("unsafe") as? Boolean
+                        if (unsafe == null) {
+                            failClosed("نتيجة تحليل غير صالحة")
+                            return
+                        }
                         val score = map?.get("score")
                         if (unsafe) {
                             GuardPrefs.incrementBlocked(this@GuardAccessibilityService, pkg)
@@ -279,19 +305,22 @@ class GuardAccessibilityService : AccessibilityService() {
                             }
                         } else {
                             GuardLog.add("فحص $pkg — آمن (أعلى درجة $score)")
-                            // [0.3.0] فحص سليم لاحق → رفع أي تغطية مناطق عالقة فورًا.
-                            OverlayController.hideRegions(this@GuardAccessibilityService)
+                            // الفحص السليم يزيل أي نوع من الأقنعة؛ لا نترك غطاءً
+                            // كاملًا عالقًا ولا نعتمد على مؤقت اختفاء.
+                            OverlayController.hideAll(this@GuardAccessibilityService)
                         }
                     }
 
                     override fun error(code: String, msg: String?, details: Any?) {
                         Log.w(TAG, "خطأ كشف: $code / $msg")
                         GuardLog.add("✗ خطأ كشف في $pkg: $code / $msg")
+                        failClosed("خطأ كشف $code")
                     }
 
                     override fun notImplemented() {
                         Log.w(TAG, "قناة الكشف غير مهيأة بعد")
                         GuardLog.add("✗ قناة الكشف غير مهيأة بعد — محرك guardMain لم يبدأ")
+                        failClosed("قناة الكشف غير مهيأة")
                     }
                 }
             )
@@ -300,6 +329,16 @@ class GuardAccessibilityService : AccessibilityService() {
     /** هل ما تزال نتيجة هذا التوليد صالحة؟ (لم يحصل حدث أحدث ولم تُعد مهلة 5 ثوانٍ) */
     private fun isFresh(g: Int): Boolean =
         g == deadlineGen && System.currentTimeMillis() <= deadlineAt
+
+    /** أي لقطة لم تُحسم لا تُعامل كآمنة؛ نغطي الشاشة إلى أن يأتي فحص صالح. */
+    private fun failClosed(reason: String) {
+        if (!GuardPrefs.canGuard(this)) {
+            OverlayController.hideAll(this)
+            return
+        }
+        GuardLog.add("⚠ تعذر التحقق — تغطية كاملة احتياطية: $reason")
+        OverlayController.show(this)
+    }
 
     private fun ensureEngine(): FlutterEngine? {
         engine?.let { return it }

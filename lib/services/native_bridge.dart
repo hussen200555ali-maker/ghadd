@@ -353,11 +353,9 @@ class GuardBrain {
     }
   }
 
-  /// [0.3.0] تعيين مناطق المحتوى غير اللائق على إطار JPEG — يعيد مربعات
-  /// مُطبَّعة [0..1] (x, y, w, h) منفوخة بهامش 20% (تغطي الصورة كلها لا
-  /// الجزء المكشوف وحده، وحارس حدود يمنع الخروج عن الإطار). قائمة فارغة
-  /// تعني: المصنّف أعلن غير لائق لكن الكاشف لم يجد مربعات — فالاحتياط
-  /// التغطية الكاملة (يُقرر الأصلي).
+  /// تعيين مناطق المحتوى غير اللائق على إطار JPEG — يعيد أقنعة واسعة
+  /// مُطبَّعة [0..1] (x, y, w, h) من موضع الكشف إلى الجذع وأعلى الفخذين.
+  /// قائمة فارغة مع إنذار المصنف تعني استخدام التغطية الكاملة الاحتياطية.
   static Future<List<List<double>>> detectRegions(Uint8List bytes) async {
     if (!_regionsReady) {
       if (!await ensure()) return const [];
@@ -367,23 +365,24 @@ class GuardBrain {
       final dynamic result = await NsfwDetector.instance.scanBytes(
         bytes,
         modelId: _regionsModelId,
-        confidenceThreshold: 0.25,
+        confidenceThreshold: 0.15,
       );
       final dets = result.detections;
       if (dets == null || dets.isEmpty) return const [];
-      // أعلى 6 مربعات ثقةً — كفى عمليًا، ويحمي من غلال مربعات متدنية.
+      // حتى 12 مربعًا بعتبة أقل لرفع احتمال التقاط المناطق الصغيرة أو المتعددة؛
+      // سيزيد ذلك احتمالات الإيجابيات الكاذبة ويُفضَّل هنا على تفويت الحماية.
       final boxes = (dets.toList()
             ..sort((a, b) => b.confidence.compareTo(a.confidence)))
-          .take(6)
+          .take(12)
           .map((d) {
         final bx = d.box;
-        final mx = bx.width * 0.20, my = bx.height * 0.20;
-        // clamp يعيد num بنيويًا — toDouble() لتثبيت نوع القائمة المُعادة
-        final x = (bx.x - mx).clamp(0.0, 1.0).toDouble();
-        final y = (bx.y - my).clamp(0.0, 1.0).toDouble();
-        final w = (bx.width + 2 * mx).clamp(0.0, 1.0 - x).toDouble();
-        final h = (bx.height + 2 * my).clamp(0.0, 1.0 - y).toDouble();
-        return <double>[x, y, w, h];
+        return SensitiveBodyMask.expand(
+          label: d.label.toString(),
+          x: bx.x,
+          y: bx.y,
+          width: bx.width,
+          height: bx.height,
+        );
       }).toList();
       await GuardSystem.logNative('تعيين المناطق: ${boxes.length} مربعًا (أعلى ثقة ${dets.first.confidence.toStringAsFixed(2)})');
       return boxes;

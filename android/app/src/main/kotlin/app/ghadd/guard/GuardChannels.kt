@@ -68,6 +68,7 @@ object GuardChannels {
                     // يوقف التصريح» صار حرفيًا). النظام وحده لا يستطيع هذا
                     // الإيقاف ولا غيره: كل قتل/نوم/مسح من «الأخيرة» يُعالَج
                     // بـSTART_STICKY والاسترداد الصفري فتعود الحماية وحدها.
+                    OverlayController.hideAll(context)
                     ProjectionService.stop(context)
                     GuardForegroundService.stop(context)
                     result.success(true)

@@ -59,6 +59,55 @@ class GuardThreshold {
       hasSensitiveRegions || score >= effectiveThreshold;
 }
 
+/// يوسّع كشف نقطة حساسة إلى نطاق الجذع وأعلى الفخذين بدل مربع صغير حولها.
+/// هذه تغطية هندسية محافظة وليست تجزئة دقيقة لشكل الجسم.
+class SensitiveBodyMask {
+  SensitiveBodyMask._();
+
+  static List<double> expand({
+    required String label,
+    required double x,
+    required double y,
+    required double width,
+    required double height,
+  }) {
+    final normalized = label.trim().toUpperCase();
+    final centerX = x + width / 2;
+    final centerY = y + height / 2;
+    final upperBody = const {
+      'NIPPLE', 'FEMALE_BREAST_EXPOSED', 'MALE_BREAST_EXPOSED',
+      'BELLY_EXPOSED', 'ARMPITS_EXPOSED', 'BACK_EXPOSED', 'TORSO_EXPOSED',
+    }.contains(normalized);
+    final lowerBody = const {
+      'ANUS', 'PENIS', 'VAGINA', 'ANUS_EXPOSED',
+      'MALE_GENITALIA_EXPOSED', 'FEMALE_GENITALIA_EXPOSED',
+      'BUTTOCKS_EXPOSED', 'THIGH_EXPOSED',
+    }.contains(normalized);
+
+    final minWidth = normalized == 'MAKE_LOVE' ? 0.72 : 0.54;
+    final targetWidth = (width * 3.5 > minWidth ? width * 3.5 : minWidth)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final left = (centerX - targetWidth / 2).clamp(0.0, 1.0).toDouble();
+    final right = (centerX + targetWidth / 2).clamp(0.0, 1.0).toDouble();
+
+    final topReach = upperBody
+        ? (height * 2 > 0.16 ? height * 2 : 0.16)
+        : lowerBody
+            ? (height * 5.5 > 0.45 ? height * 5.5 : 0.45)
+            : (height * 4 > 0.34 ? height * 4 : 0.34);
+    final bottomReach = upperBody
+        ? (height * 5.5 > 0.45 ? height * 5.5 : 0.45)
+        : lowerBody
+            ? (height * 2 > 0.18 ? height * 2 : 0.18)
+            : (height * 4 > 0.38 ? height * 4 : 0.38);
+    final top = (centerY - topReach).clamp(0.0, 1.0).toDouble();
+    final bottom = (centerY + bottomReach).clamp(0.0, 1.0).toDouble();
+
+    return <double>[left, top, right - left, bottom - top];
+  }
+}
+
 /// قرار مكتمل من تحليل واحد — نفس شكل ردّ قناة ghadd/analyze.
 class GuardDecision {
   const GuardDecision({
