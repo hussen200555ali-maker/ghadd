@@ -32,6 +32,19 @@ void main() {
       expect(GuardThreshold.isUnsafe(0.49, 0.2), isFalse);
     });
 
+    test('كشف منطقة حساسة يفعّل الحماية حتى لو كان تصنيف الصورة آمنًا', () {
+      expect(
+        GuardThreshold.isUnsafeFromSignals(
+          0.08,
+          0.45,
+          hasSensitiveRegions: true,
+        ),
+        isTrue,
+      );
+      expect(GuardThreshold.isUnsafeFromSignals(0.44, 0.45), isFalse);
+      expect(GuardThreshold.isUnsafeFromSignals(0.46, 0.45), isTrue);
+    });
+
     test('أقرب قالب مسبق للمنزلق', () {
       expect(GuardThreshold.nearestPreset(0.72), 'متوازنة');
       expect(GuardThreshold.nearestPreset(0.88), 'صارمة');

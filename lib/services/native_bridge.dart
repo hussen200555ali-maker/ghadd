@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:nsfw_detect/nsfw_detect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/decision.dart';
+
 /// تخزين محلي فقط — أي مفتاح هنا بمرآته في GuardPrefs.kt عبر قناة ghadd/control،
 /// ومرآة ثانية في shared_preferences (بادئة ghadd_) لاستعادة الحالة عند الإقلاع.
 class GuardSettings {
@@ -439,23 +441,27 @@ class DetectorService {
       confidenceThreshold: effective,
     );
     final parsed = _bestScore(result);
-    final unsafe = parsed.score >= effective;
+    // لا نجعل المصنّف الثنائي بوابةً لكاشف المناطق: قد يفوّت صورة صغيرة
+    // داخل منشور أو مشهدًا غير صريح. افحص كاشف الأجزاء في كل لقطة وادمج
+    // الإشارتين؛ أي مربع حساس موجب يكفي لتفعيل الحماية.
+    final regions = await GuardBrain.detectRegions(bytes);
+    final unsafe = GuardThreshold.isUnsafeFromSignals(
+      parsed.score,
+      effective,
+      hasSensitiveRegions: regions.isNotEmpty,
+    );
     final verdict = <String, dynamic>{
       'unsafe': unsafe,
       'score': parsed.score,
       'label': parsed.label,
       'threshold': effective,
     };
-    // [0.3.0] وضع المناطق: عند الإنذار فقط ندفع تكلفة الكاشف (نداء واحد سريع،
-    // YOLO11n عند 640) لنعرف أين المحتوى — فتُغطى المربعات ويبقى عمل المستخدم
-    // جاريًا. كاشف غير جاهز/فاشل/بلا مربعات → لا مفتاح regions → الأصلي
-    // يطبق التغطية الكاملة احتياطًا (لا نكشف ولا نتجاهل أبدًا).
-    if (unsafe && GuardSettings.regionMode) {
-      final regions = await GuardBrain.detectRegions(bytes);
-      if (regions.isNotEmpty) {
-        verdict['mode'] = 'regions';
-        verdict['regions'] = regions;
-      }
+    // عند وجود مربعات، Kotlin يغطي المناطق أو الشاشة كاملة حسب الإعداد.
+    // وإن لم ينتج كاشف المناطق مربعات وبقي المصنف إيجابيًا، يستخدم Kotlin
+    // التغطية الكاملة الاحتياطية كما كان.
+    if (regions.isNotEmpty && GuardSettings.regionMode) {
+      verdict['mode'] = 'regions';
+      verdict['regions'] = regions;
     }
     return verdict;
   }

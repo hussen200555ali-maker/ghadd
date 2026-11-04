@@ -48,6 +48,15 @@ class GuardThreshold {
     final t = clamp(threshold);
     return score >= t;
   }
+
+  /// يكفي كشف منطقة حساسة للحجب حتى إن أخفق مصنّف الصورة الكاملة.
+  /// لا نُسقط العتبة هنا لأن الوضع الموسّع يستخدم 0.45 عمدًا.
+  static bool isUnsafeFromSignals(
+    double score,
+    double effectiveThreshold, {
+    bool hasSensitiveRegions = false,
+  }) =>
+      hasSensitiveRegions || score >= effectiveThreshold;
 }
 
 /// قرار مكتمل من تحليل واحد — نفس شكل ردّ قناة ghadd/analyze.
