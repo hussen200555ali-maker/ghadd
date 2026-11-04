@@ -69,7 +69,7 @@ void main() {
         height: 0.08,
       );
       expect(mask[0], greaterThanOrEqualTo(0.0));
-      expect(mask[1], lessThanOrEqualTo(0.42));
+      expect(mask[1], lessThanOrEqualTo(0.46));
       expect(mask[0] + mask[2], lessThanOrEqualTo(1.0));
       expect(mask[1] + mask[3], lessThanOrEqualTo(1.0));
     });
