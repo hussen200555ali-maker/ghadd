@@ -8,5 +8,5 @@
     <string name="recovery_notification_title">حماية غَضّ احتاجت استردادًا</string>
     <string name="recovery_notification_text">سقطت جلسة الالتقاط (سلوك نظامي على أندرويد 9/10). انقر هنا لاستعادتها بضغطة واحدة — سيفُتح حوار النظام مباشرة.</string>
     <string name="overlay_title">تم طمس محتوى غير آمن</string>
-    <string name="overlay_hint">انقر لإخفاء الرسالة</string>
+    <string name="overlay_hint">تبقى التغطية حتى يظهر فحص آمن أو توقف الحماية يدويًا</string>
 </resources>

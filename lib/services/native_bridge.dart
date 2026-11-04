@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:nsfw_detect/nsfw_detect.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/decision.dart';
+
 /// تخزين محلي فقط — أي مفتاح هنا بمرآته في GuardPrefs.kt عبر قناة ghadd/control،
 /// ومرآة ثانية في shared_preferences (بادئة ghadd_) لاستعادة الحالة عند الإقلاع.
 class GuardSettings {
@@ -351,11 +353,9 @@ class GuardBrain {
     }
   }
 
-  /// [0.3.0] تعيين مناطق المحتوى غير اللائق على إطار JPEG — يعيد مربعات
-  /// مُطبَّعة [0..1] (x, y, w, h) منفوخة بهامش 20% (تغطي الصورة كلها لا
-  /// الجزء المكشوف وحده، وحارس حدود يمنع الخروج عن الإطار). قائمة فارغة
-  /// تعني: المصنّف أعلن غير لائق لكن الكاشف لم يجد مربعات — فالاحتياط
-  /// التغطية الكاملة (يُقرر الأصلي).
+  /// تعيين مناطق المحتوى غير اللائق على إطار JPEG — يعيد أقنعة واسعة
+  /// مُطبَّعة [0..1] (x, y, w, h) من موضع الكشف إلى الجذع وأعلى الفخذين.
+  /// قائمة فارغة مع إنذار المصنف تعني استخدام التغطية الكاملة الاحتياطية.
   static Future<List<List<double>>> detectRegions(Uint8List bytes) async {
     if (!_regionsReady) {
       if (!await ensure()) return const [];
@@ -365,23 +365,24 @@ class GuardBrain {
       final dynamic result = await NsfwDetector.instance.scanBytes(
         bytes,
         modelId: _regionsModelId,
-        confidenceThreshold: 0.25,
+        confidenceThreshold: 0.15,
       );
       final dets = result.detections;
       if (dets == null || dets.isEmpty) return const [];
-      // أعلى 6 مربعات ثقةً — كفى عمليًا، ويحمي من غلال مربعات متدنية.
+      // حتى 12 مربعًا بعتبة أقل لرفع احتمال التقاط المناطق الصغيرة أو المتعددة؛
+      // سيزيد ذلك احتمالات الإيجابيات الكاذبة ويُفضَّل هنا على تفويت الحماية.
       final boxes = (dets.toList()
             ..sort((a, b) => b.confidence.compareTo(a.confidence)))
-          .take(6)
+          .take(12)
           .map((d) {
         final bx = d.box;
-        final mx = bx.width * 0.20, my = bx.height * 0.20;
-        // clamp يعيد num بنيويًا — toDouble() لتثبيت نوع القائمة المُعادة
-        final x = (bx.x - mx).clamp(0.0, 1.0).toDouble();
-        final y = (bx.y - my).clamp(0.0, 1.0).toDouble();
-        final w = (bx.width + 2 * mx).clamp(0.0, 1.0 - x).toDouble();
-        final h = (bx.height + 2 * my).clamp(0.0, 1.0 - y).toDouble();
-        return <double>[x, y, w, h];
+        return SensitiveBodyMask.expand(
+          label: d.label.toString(),
+          x: bx.x,
+          y: bx.y,
+          width: bx.width,
+          height: bx.height,
+        );
       }).toList();
       await GuardSystem.logNative('تعيين المناطق: ${boxes.length} مربعًا (أعلى ثقة ${dets.first.confidence.toStringAsFixed(2)})');
       return boxes;
@@ -439,23 +440,27 @@ class DetectorService {
       confidenceThreshold: effective,
     );
     final parsed = _bestScore(result);
-    final unsafe = parsed.score >= effective;
+    // لا نجعل المصنّف الثنائي بوابةً لكاشف المناطق: قد يفوّت صورة صغيرة
+    // داخل منشور أو مشهدًا غير صريح. افحص كاشف الأجزاء في كل لقطة وادمج
+    // الإشارتين؛ أي مربع حساس موجب يكفي لتفعيل الحماية.
+    final regions = await GuardBrain.detectRegions(bytes);
+    final unsafe = GuardThreshold.isUnsafeFromSignals(
+      parsed.score,
+      effective,
+      hasSensitiveRegions: regions.isNotEmpty,
+    );
     final verdict = <String, dynamic>{
       'unsafe': unsafe,
       'score': parsed.score,
       'label': parsed.label,
       'threshold': effective,
     };
-    // [0.3.0] وضع المناطق: عند الإنذار فقط ندفع تكلفة الكاشف (نداء واحد سريع،
-    // YOLO11n عند 640) لنعرف أين المحتوى — فتُغطى المربعات ويبقى عمل المستخدم
-    // جاريًا. كاشف غير جاهز/فاشل/بلا مربعات → لا مفتاح regions → الأصلي
-    // يطبق التغطية الكاملة احتياطًا (لا نكشف ولا نتجاهل أبدًا).
-    if (unsafe && GuardSettings.regionMode) {
-      final regions = await GuardBrain.detectRegions(bytes);
-      if (regions.isNotEmpty) {
-        verdict['mode'] = 'regions';
-        verdict['regions'] = regions;
-      }
+    // عند وجود مربعات، Kotlin يغطي المناطق أو الشاشة كاملة حسب الإعداد.
+    // وإن لم ينتج كاشف المناطق مربعات وبقي المصنف إيجابيًا، يستخدم Kotlin
+    // التغطية الكاملة الاحتياطية كما كان.
+    if (regions.isNotEmpty && GuardSettings.regionMode) {
+      verdict['mode'] = 'regions';
+      verdict['regions'] = regions;
     }
     return verdict;
   }

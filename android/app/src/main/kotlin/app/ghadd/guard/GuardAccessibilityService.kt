@@ -39,6 +39,7 @@ class GuardAccessibilityService : AccessibilityService() {
         const val CHANNEL = "ghadd/analyze"
         const val DEBOUNCE_MS = 400L
         const val WATCHDOG_MS = 5_000L
+        const val PERIODIC_SCAN_MS = 1_200L
 
         @Volatile
         var instance: GuardAccessibilityService? = null
@@ -51,6 +52,36 @@ class GuardAccessibilityService : AccessibilityService() {
     private var pending = false
     private var lastHandledAt = 0L
     private var lastPackage: String? = null
+    private var scanInFlight = false
+    private var pendingCapture = false
+    private var pendingCaptureScheduled = false
+    private var lastScanStartedAt = 0L
+    private var lastFailureReason = ""
+    private var lastFailureLogAt = 0L
+    private var lastSafeLogAt = 0L
+    private var lastUnsafeLogAt = 0L
+    private var lastCountedUnsafePackage: String? = null
+    private var lastCountedUnsafeAt = 0L
+
+    private val pendingCaptureRunnable = Runnable {
+        pendingCaptureScheduled = false
+        if (pendingCapture && GuardPrefs.canGuard(this)) {
+            pendingCapture = false
+            captureAndAnalyze()
+        }
+    }
+
+    /** فحص دوري للمحتوى المتحرك الذي لا يرسل أحداث إمكانية وصول لكل إطار. */
+    private val periodicScan = object : Runnable {
+        override fun run() {
+            if (!GuardPrefs.canGuard(this@GuardAccessibilityService)) {
+                OverlayController.hideAll(this@GuardAccessibilityService)
+            } else if (lastPackage != null) {
+                captureAndAnalyze()
+            }
+            mainHandler.postDelayed(this, PERIODIC_SCAN_MS)
+        }
+    }
 
     /** عدّاد التوليد: كل حدث جديد يُبطل أي نتيجة قديمة في الطريق (منع «الغلطة الزمنية»). */
     private var generation = 0
@@ -65,9 +96,17 @@ class GuardAccessibilityService : AccessibilityService() {
         instance = this
         GuardLog.add("خدمة إمكانية الوصول متصلة — جاهزة للالتقاط")
         Log.i(TAG, "خدمة إمكانية الوصول متصلة — حماية غَضّ جاهزة")
+        mainHandler.removeCallbacks(periodicScan)
+        mainHandler.postDelayed(periodicScan, PERIODIC_SCAN_MS)
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(periodicScan)
+        mainHandler.removeCallbacks(pendingCaptureRunnable)
+        generation++
+        scanInFlight = false
+        pendingCapture = false
+        pendingCaptureScheduled = false
         instance = null
         GuardLog.add("خدمة إمكانية الوصول انقطعت")
         super.onDestroy()
@@ -121,14 +160,22 @@ class GuardAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !GuardPrefs.canGuard(this)) return
+        if (event == null) return
+        if (!GuardPrefs.canGuard(this)) {
+            OverlayController.hideAll(this)
+            return
+        }
         val type = event.eventType
         if (type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         ) return
 
         val pkg = event.packageName?.toString() ?: return
-        if (pkg == packageName) return                  // تجاهل نفسه
+        if (pkg == packageName) {
+            lastPackage = null
+            OverlayController.hideAll(this)
+            return
+        }
 
         // [0.3.3] الاسترداد الصفري: حين نكون قد أطلقنا حوار استرداد النظام
         // بأنفسنا (نافذة مسلّحة 45 ثانية من RecoveryNotifier) تظهر نافذة
@@ -144,7 +191,11 @@ class GuardAccessibilityService : AccessibilityService() {
             if (tryAutoConfirmConsent()) return
         }
 
-        if (GuardPrefs.isWhitelisted(this, pkg)) return // القائمة البيضاء (4.1)
+        if (GuardPrefs.isWhitelisted(this, pkg)) {
+            lastPackage = null
+            OverlayController.hideAll(this)
+            return // القائمة البيضاء (4.1)
+        }
         lastPackage = pkg
 
         val now = System.currentTimeMillis()
@@ -164,8 +215,34 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private fun captureAndAnalyze() {
         val svc = instance ?: return
-        if (!GuardPrefs.canGuard(this)) return
+        if (!GuardPrefs.canGuard(this)) {
+            pendingCapture = false
+            pendingCaptureScheduled = false
+            mainHandler.removeCallbacks(pendingCaptureRunnable)
+            OverlayController.hideAll(this)
+            return
+        }
+        if (lastPackage == null) return
+        if (scanInFlight) {
+            pendingCapture = true
+            return
+        }
+        val now = System.currentTimeMillis()
+        val waitMs = PERIODIC_SCAN_MS - (now - lastScanStartedAt)
+        if (lastScanStartedAt != 0L && waitMs > 0L) {
+            pendingCapture = true
+            if (!pendingCaptureScheduled) {
+                pendingCaptureScheduled = true
+                mainHandler.postDelayed(pendingCaptureRunnable, waitMs)
+            }
+            return
+        }
+        pendingCapture = false
+        pendingCaptureScheduled = false
+        mainHandler.removeCallbacks(pendingCaptureRunnable)
 
+        scanInFlight = true
+        lastScanStartedAt = now
         val g = ++generation
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // المسار الأساسي (أندرويد 11+): takeScreenshot الرسمي لخدمة إمكانية الوصول.
@@ -173,22 +250,34 @@ class GuardAccessibilityService : AccessibilityService() {
             // ولا يُزاد أي عدّاد محجوب؛ سلوك «الاحترام الفوري» في السؤال 4 من وثيقة الردّ.
             // التوقيع الرسمي (compileSdk 34): takeScreenshot(displayId, executor, callback)
             // والواجهة TakeScreenshotCallback بلا مُنشئ: onSuccess(ScreenshotResult) / onFailure(Int).
-            svc.takeScreenshot(
+            try {
+                svc.takeScreenshot(
                 Display.DEFAULT_DISPLAY,
                 screenshotExecutor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(result: ScreenshotResult) {
                         if (g != generation) return // نتيجة متخلفة — تُهمل
                         val jpeg = toJpegInMemory(result.hardwareBuffer, result.colorSpace)
-                        if (jpeg == null || g != generation) return
+                        if (jpeg == null) {
+                            if (g == generation) failClosed("تعذر تحويل لقطة الشاشة")
+                            finishScan(g)
+                            return
+                        }
+                        if (g != generation) return
                         mainHandler.post { askDart(jpeg, g) }
                     }
 
                     override fun onFailure(errorCode: Int) {
                         Log.w(TAG, "فشل الالتقاط — رمز $errorCode (تطبيقات FLAG_SECURE ترفض ببساطة)")
+                        if (g == generation) failClosed("فشل التقاط الشاشة: $errorCode")
+                        finishScan(g)
                     }
                 }
-            )
+                )
+            } catch (t: Throwable) {
+                failClosed("استثناء التقاط الشاشة: ${t.message}")
+                finishScan(g)
+            }
         } else {
             // المسار البديل (أندرويد 9/10): محرك MediaProjection — نفس عقد دورة الحياة
             // (RAM فقط، بلا ملف وسيط) ونفس حراسة التوليد والمهلة، ونتائجه تمر إلى askDart مباشرة.
@@ -200,19 +289,28 @@ class GuardAccessibilityService : AccessibilityService() {
             // المستخدم خارج التطبيق — المشهد الذي بلغه المالك.
             if (!ProjectionCaptureEngine.isReady) {
                 RecoveryNotifier.maybeNotify(this)
+                failClosed("جلسة التقاط الشاشة غير جاهزة")
+                finishScan(g)
                 return
             }
-            ProjectionCaptureEngine.capture { jpeg, reason ->
+            try {
+                ProjectionCaptureEngine.capture { jpeg, reason ->
                 if (jpeg == null) {
                     if (g == generation && reason != null && reason != lastCaptureReason) {
                         lastCaptureReason = reason
                         GuardLog.add("✗ الالتقاط البديل: $reason")
                     }
+                    if (g == generation) failClosed(reason ?: "فشل الالتقاط البديل")
+                    finishScan(g)
                     return@capture
                 }
                 lastCaptureReason = null
                 if (g != generation) return@capture
                 askDart(jpeg, g)
+                }
+            } catch (t: Throwable) {
+                failClosed("استثناء الالتقاط البديل: ${t.message}")
+                finishScan(g)
             }
         }
     }
@@ -237,11 +335,21 @@ class GuardAccessibilityService : AccessibilityService() {
 
     /** الجسر إلى محرك nsfw_detect الذي يعمل داخل isolate خلفي مخصص (guardMain). */
     private fun askDart(jpeg: ByteArray, g: Int) {
-        val eng = ensureEngine() ?: return
+        val eng = ensureEngine() ?: run {
+            failClosed("محرك الكشف غير متاح")
+            finishScan(g)
+            return
+        }
         if (g != generation) return
         val pkg = lastPackage ?: "unknown"
         deadlineGen = g
         deadlineAt = System.currentTimeMillis() + WATCHDOG_MS
+        mainHandler.postDelayed({
+            if (g == generation && deadlineGen == g && System.currentTimeMillis() > deadlineAt) {
+                failClosed("تجاوز تحليل اللقطة مهلة ${WATCHDOG_MS}ms")
+                finishScan(g)
+            }
+        }, WATCHDOG_MS + 25L)
 
         MethodChannel(eng.dartExecutor.binaryMessenger, CHANNEL)
             .invokeMethod(
@@ -254,15 +362,28 @@ class GuardAccessibilityService : AccessibilityService() {
                 ),
                 object : MethodChannel.Result {
                     override fun success(result: Any?) {
+                        if (g != generation) return
                         if (!isFresh(g)) {
-                            Log.i(TAG, "نتيجة متأخرة تُهمل — عدّاد التوليد/المهلة (السؤال 3)")
+                            Log.i(TAG, "نتيجة متأخرة — تغطية احتياطية بدل اعتمادها كآمنة")
+                            failClosed("وصلت نتيجة التحليل بعد المهلة")
+                            finishScan(g)
                             return
                         }
                         val map = result as? Map<*, *>
-                        val unsafe = map?.get("unsafe") as? Boolean ?: false
+                        val unsafe = map?.get("unsafe") as? Boolean
+                        if (unsafe == null) {
+                            failClosed("نتيجة تحليل غير صالحة")
+                            finishScan(g)
+                            return
+                        }
                         val score = map?.get("score")
                         if (unsafe) {
-                            GuardPrefs.incrementBlocked(this@GuardAccessibilityService, pkg)
+                            val now = System.currentTimeMillis()
+                            if (pkg != lastCountedUnsafePackage || now - lastCountedUnsafeAt >= 10_000L) {
+                                GuardPrefs.incrementBlocked(this@GuardAccessibilityService, pkg)
+                                lastCountedUnsafePackage = pkg
+                                lastCountedUnsafeAt = now
+                            }
                             // [0.3.0] وضع المناطق: مربعات مكتشفة → تغطيتها فقط (بلا مانع
                             // لمس — العمل يواصل). تعذر تحديد المواضع أو الوضع مطفأً →
                             // التغطية الكاملة كما في 0.2.x.
@@ -271,27 +392,38 @@ class GuardAccessibilityService : AccessibilityService() {
                                 (r as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() }
                             }.orEmpty()
                             if (GuardPrefs.regionMode(this@GuardAccessibilityService) && parsed.isNotEmpty()) {
-                                GuardLog.add("⚠ كشف غير لائق في $pkg — الدرجة $score — تغطية ${parsed.size} منطقة (العمل يواصل)")
+                                logUnsafeAtMostEveryTenSeconds(pkg, score, parsed.size)
                                 OverlayController.showRegions(this@GuardAccessibilityService, parsed)
                             } else {
-                                GuardLog.add("⚠ كشف محتوى غير لائق في $pkg — الدرجة $score — عرض الطمس الكامل")
+                                logUnsafeAtMostEveryTenSeconds(pkg, score, 0)
                                 OverlayController.show(this@GuardAccessibilityService)
                             }
                         } else {
-                            GuardLog.add("فحص $pkg — آمن (أعلى درجة $score)")
-                            // [0.3.0] فحص سليم لاحق → رفع أي تغطية مناطق عالقة فورًا.
-                            OverlayController.hideRegions(this@GuardAccessibilityService)
+                            val now = System.currentTimeMillis()
+                            if (now - lastSafeLogAt >= 10_000L) {
+                                GuardLog.add("فحص $pkg — آمن (أعلى درجة $score)")
+                                lastSafeLogAt = now
+                            }
+                            lastCountedUnsafePackage = null
+                            // الفحص السليم يزيل أي نوع من الأقنعة؛ لا نترك غطاءً
+                            // كاملًا عالقًا ولا نعتمد على مؤقت اختفاء.
+                            OverlayController.hideAll(this@GuardAccessibilityService)
                         }
+                        finishScan(g)
                     }
 
                     override fun error(code: String, msg: String?, details: Any?) {
                         Log.w(TAG, "خطأ كشف: $code / $msg")
                         GuardLog.add("✗ خطأ كشف في $pkg: $code / $msg")
+                        failClosed("خطأ كشف $code")
+                        finishScan(g)
                     }
 
                     override fun notImplemented() {
                         Log.w(TAG, "قناة الكشف غير مهيأة بعد")
                         GuardLog.add("✗ قناة الكشف غير مهيأة بعد — محرك guardMain لم يبدأ")
+                        failClosed("قناة الكشف غير مهيأة")
+                        finishScan(g)
                     }
                 }
             )
@@ -300,6 +432,50 @@ class GuardAccessibilityService : AccessibilityService() {
     /** هل ما تزال نتيجة هذا التوليد صالحة؟ (لم يحصل حدث أحدث ولم تُعد مهلة 5 ثوانٍ) */
     private fun isFresh(g: Int): Boolean =
         g == deadlineGen && System.currentTimeMillis() <= deadlineAt
+
+    /** أي لقطة لم تُحسم لا تُعامل كآمنة؛ نغطي الشاشة إلى أن يأتي فحص صالح. */
+    private fun failClosed(reason: String) {
+        if (!GuardPrefs.canGuard(this)) {
+            OverlayController.hideAll(this)
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (reason != lastFailureReason || now - lastFailureLogAt >= 30_000L) {
+            GuardLog.add("⚠ تعذر التحقق — تغطية كاملة احتياطية: $reason")
+            lastFailureReason = reason
+            lastFailureLogAt = now
+        }
+        OverlayController.show(this)
+    }
+
+    private fun logUnsafeAtMostEveryTenSeconds(pkg: String, score: Any?, regionCount: Int) {
+        val now = System.currentTimeMillis()
+        if (pkg == lastCountedUnsafePackage && now - lastUnsafeLogAt < 10_000L) return
+        val detail = if (regionCount > 0) "تغطية $regionCount منطقة" else "تغطية كاملة"
+        GuardLog.add("⚠ كشف محتوى حساس في $pkg — الدرجة $score — $detail")
+        lastUnsafeLogAt = now
+    }
+
+    /** تحرير قفل الفحص ثم تنفيذ أحدث لقطة معلقة فقط. تُستدعى عبر الخيط الرئيسي. */
+    private fun finishScan(g: Int) {
+        mainHandler.post {
+            if (g != generation) return@post
+            scanInFlight = false
+            if (pendingCapture && GuardPrefs.canGuard(this)) {
+                captureAndAnalyze()
+            }
+        }
+    }
+
+    /** يبطل callbacks واللقطات المعلقة كي لا يعيد رد متأخر تشغيل الحماية بعد الإيقاف. */
+    fun cancelPendingScans() {
+        generation++
+        deadlineGen = 0
+        scanInFlight = false
+        pendingCapture = false
+        pendingCaptureScheduled = false
+        mainHandler.removeCallbacks(pendingCaptureRunnable)
+    }
 
     private fun ensureEngine(): FlutterEngine? {
         engine?.let { return it }

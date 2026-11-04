@@ -17,14 +17,15 @@ import android.view.WindowManager
 /**
  * طبقة الاستجابة — وضعان (القسم 4.1، الطبقة الثالثة):
  *
- * 1) show() — التغطية الكاملة للشاشة (سلوك 0.2.x): نافذة مانعة للمس تختفي
- *    بعد مهلة أو بنقرة المستخدم.
+ * 1) show() — تغطية كاملة للشاشة عند تعذر التحقق أو عند عدم تحديد الموضع.
+ *    لا تنقضي تلقائيًا؛ اللمس يمر إلى التطبيق أسفلها كي يستطيع المستخدم
+ *    التنقل، ولا تُزال إلا بعد فحص آمن أو إيقاف الحماية يدويًا.
  *
  * 2) showRegions() — [0.3.0] تجربة المستخدم المثالية: نافذة واحدة
  *    FLAG_NOT_TOUCHABLE | FLAG_NOT_FOCUSABLE ترسم مستطيلات الطمس على المناطق
  *    المكتشفة فقط — اللمس يمر عبر كل شيء (المستطيلات والفراغ) فيواصل المستخدم
  *    التمرير والكتابة وعمله كالمعتاد، وينحجب عنه البصر فقط. المربعات تُستبدل
- *    بكل فحص جديد وتنقضي تلقائيًا (REGION_TTL_MS) إن توقف التحديث.
+ *    بكل فحص جديد وتبقى ظاهرة إلى أن يأتي فحص آمن أو إيقاف يدوي.
  *
  * الإحداثيات تصل مُطبَّعة [0..1] نسبةً إلى إطار اللقطة، فتُضرب في مقاس الشاشة
  * الحقيقي هنا (اللقطة تُلتقط بنفس أبعاد العرض عمليًا، والتحاشي بهامش تضخيم
@@ -32,15 +33,9 @@ import android.view.WindowManager
  */
 object OverlayController {
 
-    private const val AUTO_HIDE_MS = 8000L
-
-    /** [0.3.0] عمر أقصى لتغطية المناطق بلا تحديث (النافذة تغطي ولا تحجب العمل). */
-    private const val REGION_TTL_MS = 20_000L
-
     private var current: View? = null
     private var regionWindow: View? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val regionHideRunnable = Runnable { regionWindow?.let { removeRegionView(it) } }
 
     fun show(context: Context) {
         mainHandler.post { showInternal(context.applicationContext) }
@@ -50,34 +45,47 @@ object OverlayController {
         if (!Settings.canDrawOverlays(context)) return
         if (current != null) return
 
+        regionWindow?.let { removeRegionView(it) }
+
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val view = LayoutInflater.from(context).inflate(R.layout.overlay_block, null)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         )
         try {
             wm.addView(view, params)
             current = view
-            view.setOnClickListener { hide(context) }
-            mainHandler.postDelayed({ hide(context) }, AUTO_HIDE_MS)
         } catch (_: Throwable) {
         }
     }
 
     fun hide(context: Context) {
         mainHandler.post {
-            val v = current ?: return@post
-            try {
-                (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
-                    .removeView(v)
-            } catch (_: Throwable) {
-            }
-            current = null
+            current?.let { removeCurrentView(context, it) }
         }
+    }
+
+    /** إزالة كل الأقنعة بعد نتيجة آمنة أو عند إيقاف الحماية يدويًا فقط. */
+    fun hideAll(context: Context) {
+        mainHandler.post {
+            current?.let { removeCurrentView(context, it) }
+            regionWindow?.let { removeRegionView(it) }
+        }
+    }
+
+    private fun removeCurrentView(context: Context, view: View) {
+        try {
+            (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view)
+        } catch (_: Throwable) {
+        }
+        if (current === view) current = null
     }
 
     // ==================== [0.3.0] وضع المناطق ====================
@@ -129,17 +137,16 @@ object OverlayController {
         try {
             wm.addView(view, params)
             regionWindow = view
-            // انقضاء تلقائي: إن لم يأتِ فحص أحدث (سليم أو غيره) خلال المهلة.
-            mainHandler.removeCallbacks(regionHideRunnable)
-            mainHandler.postDelayed(regionHideRunnable, REGION_TTL_MS)
+            // إذا تعذر إنشاء قناع المناطق يبقى الغطاء الكامل السابق قائمًا؛
+            // بعد نجاح الإضافة فقط يمكن استبداله بالقناع الأضيق.
+            current?.let { removeCurrentView(context, it) }
         } catch (_: Throwable) {
         }
     }
 
-    /** إخفاء تغطية المناطق (فحص لاحق سليم / نافذة متغيرة / انقضاء المهلة). */
+    /** إخفاء تغطية المناطق بعد فحص آمن أو عند إيقاف الحماية يدويًا. */
     fun hideRegions(context: Context) {
         mainHandler.post {
-            mainHandler.removeCallbacks(regionHideRunnable)
             regionWindow?.let { removeRegionView(it) }
         }
     }
