@@ -20,11 +20,14 @@ object GuardModelStore {
     private const val ASSET = "flutter_assets/assets/models/nsfw.tflite"
 
     /**
-     * [0.3.0] نموذج تعيين المناطق (EraX-NSFW YOLO11n — Apache 2.0، 10.5MB):
-     * كاشف مربعات للأجزاء المكشوفة، مُحوَّل إلى TFLite ومتحقق رقميًا
-     * (IoU 0.93–0.96 مقابل مرجع PyTorch). يُنسخ مثل النموذج المصنِّف.
+     * [0.3.0] نموذج تعيين المناطق — YOLO موحّد المخرجات، مُحوَّل TFLite
+     * ومتحقق رقميًا مقابل مرجعه PyTorch.
+     * [0.3.5] الترقية إلى NudeNet v3.4 YOLOv8n بفئاته الثماني عشرة (AGPL-3.0):
+     * اسم الأصل والملف الهدف كلاهما جديد (v2) لأن copyAssetIfNeeded نسخ
+     * مرة واحدة — لو بقيت الأسماء لظل ملف EraX الخمسي القديم يعمل مع
+     * جدول الفئات الثماني عشري فتنقلب الفئات (فشل صامت كارثي).
      */
-    private const val REGIONS_ASSET = "flutter_assets/assets/models/nsfw_regions.tflite"
+    private const val REGIONS_ASSET = "flutter_assets/assets/models/nsfw_regions2.tflite"
 
     /** معرف النموذج المسجّل في الحزمة — تستهدفه نداءات scanBytes. */
     const val MODEL_ID = "ghadd_nsfw"
@@ -44,11 +47,13 @@ object GuardModelStore {
         }
     }
 
-    /** [0.3.0] تجهيز نموذج المناطق بنفس عقد النسخ والعزل. */
+    /** [0.3.5] تجهيز نموذج المناطق v2 بنفس عقد النسخ والعزل. */
     fun ensureRegions(context: Context): String? {
         return try {
             val dir = File(context.filesDir, "ghadd_models")
-            val out = copyAssetIfNeeded(context, REGIONS_ASSET, File(dir, "nsfw_regions.tflite"), 500_000)
+            // ملف EraX القديم يُحذف إن وُجد — لا مخلفات تربك التسجيل
+            File(dir, "nsfw_regions.tflite").delete()
+            val out = copyAssetIfNeeded(context, REGIONS_ASSET, File(dir, "nsfw_regions_v2.tflite"), 500_000)
             out?.absolutePath
         } catch (t: Throwable) {
             GuardLog.add("فشل تجهيز نموذج المناطق: ${t.message}")

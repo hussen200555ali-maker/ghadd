@@ -94,6 +94,94 @@ void main() {
     });
   });
 
+  group('DetectorViewTransform — إحداثيات المناظير [0.3.5]', () {
+    test('الترتيب المعلن للمناظير الإضافية', () {
+      expect(DetectorViewTransform.extraViews,
+          ['mirror', 'rot90', 'rot180', 'rot270']);
+    });
+
+    test('rot90 مرتين = rot180، وثلاث مرات = rot270', () {
+      final box = <double>[0.1, 0.2, 0.3, 0.4];
+      List<double> apply(String t, List<double> b) =>
+          DetectorViewTransform.inverseBox(t, b);
+      final twice = apply('rot90', apply('rot90', box));
+      final r180 = apply('rot180', box);
+      final thrice = apply('rot90', twice);
+      final r270 = apply('rot270', box);
+      for (var i = 0; i < 4; i++) {
+        expect(twice[i], closeTo(r180[i], 1e-9));
+        expect(thrice[i], closeTo(r270[i], 1e-9));
+      }
+    });
+
+    test('الإطار الكامل يبقى الإطار الكامل في كل المناظير', () {
+      final full = <double>[0.0, 0.0, 1.0, 1.0];
+      for (final t in DetectorViewTransform.extraViews) {
+        final b = DetectorViewTransform.inverseBox(t, full);
+        expect(b[0], closeTo(0.0, 1e-9));
+        expect(b[1], closeTo(0.0, 1e-9));
+        expect(b[0] + b[2], closeTo(1.0, 1e-9));
+        expect(b[1] + b[3], closeTo(1.0, 1e-9));
+      }
+    });
+
+    test('المرآة تعكس الأفقيات فقط', () {
+      final b = DetectorViewTransform.inverseBox('mirror', [0.1, 0.2, 0.3, 0.4]);
+      expect(b[0], closeTo(0.6, 1e-9)); // 1 - 0.1 - 0.3
+      expect(b[1], closeTo(0.2, 1e-9));
+      expect(b[2], closeTo(0.3, 1e-9));
+      expect(b[3], closeTo(0.4, 1e-9));
+    });
+
+    test('القصّ الآمن: مربع خارج الحدود لا يخرج عنها أبدًا', () {
+      final b = DetectorViewTransform.inverseBox('rot90', [0.9, 0.9, 0.5, 0.5]);
+      expect(b[0], greaterThanOrEqualTo(0.0));
+      expect(b[1], greaterThanOrEqualTo(0.0));
+      expect(b[0] + b[2], lessThanOrEqualTo(1.0));
+      expect(b[1] + b[3], lessThanOrEqualTo(1.0));
+    });
+  });
+
+  group('أقنعة NudeNet — المكشوف والمغطّى [0.3.5]', () {
+    test('الفئات الحساسة تشمل المغطّى وتستبعد الوجه والأقدام والبطن', () {
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('FEMALE_BREAST_COVERED'), isTrue);
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('BUTTOCKS_COVERED'), isTrue);
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('FEMALE_GENITALIA_COVERED'), isTrue);
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('ANUS_COVERED'), isTrue);
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('FACE_FEMALE'), isFalse);
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('FEET_EXPOSED'), isFalse);
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('BELLY_EXPOSED'), isFalse);
+      expect(SensitiveBodyMask.sensitiveDetectorLabels
+          .contains('MALE_BREAST_EXPOSED'), isFalse);
+    });
+
+    test('قناع المؤخرة (مغطّاة) يمتد صعودًا نحو الوسط وأعلى الفخذين', () {
+      final mask = SensitiveBodyMask.expand(
+        label: 'BUTTOCKS_COVERED',
+        x: 0.4, y: 0.7, width: 0.2, height: 0.1,
+      );
+      expect(mask[1], lessThanOrEqualTo(0.5));
+      expect(mask[0] + mask[2], lessThanOrEqualTo(1.0));
+      expect(mask[1] + mask[3], lessThanOrEqualTo(1.0));
+    });
+
+    test('قناع الصدر (مغطّى) يمتد نزولًا إلى الجذع كالصدر المكشوف', () {
+      final mask = SensitiveBodyMask.expand(
+        label: 'FEMALE_BREAST_COVERED',
+        x: 0.45, y: 0.31, width: 0.1, height: 0.06,
+      );
+      expect(mask[1], lessThanOrEqualTo(0.20));
+      expect(mask[1] + mask[3], greaterThanOrEqualTo(0.78));
+    });
+  });
+
   group('LocalCounters — عدادات مجردة بلا محتوى', () {
     test('الحجب يزيد اليومي والإجمالي معًا', () {
       final c = LocalCounters();

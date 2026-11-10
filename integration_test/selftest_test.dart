@@ -50,8 +50,8 @@ void main() {
     preparedPath = f.path;
     debugPrint('[SELFTEST] setUpAll: النسخ إلى ${f.path} ✓');
 
-    // [0.3.0] نموذج المناطق (EraX YOLO11n ~10.5MB) — نفس العقد
-    final rdata = await rootBundle.load('assets/models/nsfw_regions.tflite').timeout(
+    // [0.3.5] نموذج المناطق v2 (NudeNet YOLOv8n ~12.2MB) — نفس العقد
+    final rdata = await rootBundle.load('assets/models/nsfw_regions2.tflite').timeout(
           const Duration(minutes: 2),
           onTimeout: () => throw StateError('علِق > المهلة: rootBundle.load لنموذج المناطق علِق >2د'),
         );
@@ -169,7 +169,7 @@ void main() {
       debugPrint('[SELFTEST] مرحلة 5 ✓: $sa ≈ $sb — السلسلة كلها سليمة');
 
       // ===== 7 [0.3.0]: سلسلة المناطق — كاشف YOLO مسجّل + استدلال مربعات =====
-      debugPrint('[SELFTEST] مرحلة 6: كاشف المناطق (EraX YOLO11n)…');
+      debugPrint('[SELFTEST] مرحلة 6: كاشف المناطق (NudeNet YOLOv8n)…');
       expect(GuardBrain.regionsReady, isTrue,
           reason: 'كاشف المناطق لم يُسجّل في GuardBrain.ensure رغم توفر النموذج');
       final regScan = await NsfwDetector.instance

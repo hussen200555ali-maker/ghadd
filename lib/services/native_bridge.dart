@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:nsfw_detect/nsfw_detect.dart';
@@ -276,20 +277,28 @@ class DetectorChannel {
 /// في الحزمة قبل أي فحص. النموذجان داخل أصول الـAPK — يُنسخان مرة واحدة إلى
 /// ملفات التطبيق ثم يُسجلان عبر registerModel. لا شبكة إطلاقًا.
 ///
-/// [0.3.0] كاشف المناطق: EraX-NSFW YOLO11n (Apache 2.0) — مربعات مكشوفة
-/// بإحداثيات مُطبَّعة، مُحوَّل TFLite ومتحقق رقميًا (IoU ‎0.93–0.96 مقابل
-/// مرجع PyTorch). يُستخدم لتعيين مواضع المحتوى بعد إنذار المصنّف — لتغطية
-/// المناطق فقط بدل الشاشة كاملة.
+/// [0.3.5] كاشف المناطق: NudeNet v3.4 YOLOv8n (AGPL-3.0، 18 فئة) — مربعات
+/// لأجزاء الجسم المكشوفة والمغطّاة بإحداثيات مُطبَّعة، مُحوَّل TFLite
+/// (onnx2tf) ومتحقق رقميًا (أقصى فرق 0.0006 مقابل مرجع PyTorch عبر أربع
+/// مدخلات). يُستخدم لتعيين مواضع المحتوى في كل لقطة — لتغطية المناطق فقط
+/// بدل الشاشة كاملة — مع مسح متعدد المناظير وتكبير رباعي للوضعيات الصعبة.
 class GuardBrain {
   GuardBrain._();
 
   static const _modelId = 'ghadd_nsfw';
   static const _regionsModelId = 'ghadd_nsfw_regions';
 
-  /// ترتيب فئات كاشف EraX مطابق لـnames dict للنموذج — لا يُعتمد عليه في
-  /// الحُكم (الواجهة تستخدم aggregatedCategory) لكنه التزام توثيقي.
+  /// [0.3.5] جدول فئات NudeNet v3.4 الثماني عشرة — الترتيب عقد صامت مع ملف
+  /// النموذج (YOLOv8n المدرّب على NudeNet، TFLite float32، بدخل 640): يجب
+  /// أن يطابق حرفيًا ترتيب names أثناء التحويل وجدول NUDENET_LABELS في
+  /// TFLiteDetectorEngine — تغييره بلا إعادة تحويل يقلب الفئات.
   static const regionsClassLabels = <String>[
-    'anus', 'make_love', 'nipple', 'penis', 'vagina',
+    'FEMALE_GENITALIA_COVERED', 'FACE_FEMALE', 'BUTTOCKS_EXPOSED',
+    'FEMALE_BREAST_EXPOSED', 'FEMALE_GENITALIA_EXPOSED', 'MALE_BREAST_EXPOSED',
+    'ANUS_EXPOSED', 'FEET_EXPOSED', 'BELLY_COVERED', 'FEET_COVERED',
+    'ARMPITS_COVERED', 'ARMPITS_EXPOSED', 'FACE_MALE', 'BELLY_EXPOSED',
+    'MALE_GENITALIA_EXPOSED', 'ANUS_COVERED', 'FEMALE_BREAST_COVERED',
+    'BUTTOCKS_COVERED',
   ];
 
   static bool _ready = false;
@@ -330,20 +339,21 @@ class GuardBrain {
       _ready = true;
       await GuardSystem.logNative('النموذج المدمج سُجّل في محرك الكشف — جاهز للفحص');
 
-      // [0.3.0] كاشف المناطق — فشله غير قاتل (الاحتياط: تغطية كاملة).
+      // [0.3.5] كاشف المناطق NudeNet v3.4 (18 فئة) — فشله غير قاتل
+      // (الاحتياط: تغطية كاملة).
       if (!_regionsReady && prep['regionsOk'] == true) {
         final rpath = prep['regionsPath'] as String?;
         if (rpath != null && rpath.isNotEmpty) {
           await NsfwDetector.instance.registerModel(ModelRegistration(
             id: _regionsModelId,
-            displayName: 'غَضّ — كاشف المناطق (EraX YOLO11n، Apache 2.0)',
+            displayName: 'غَضّ — كاشف المناطق (NudeNet v3.4 YOLOv8n، 18 فئة، AGPL-3.0)',
             assetPath: rpath,
             inputSize: 640,
             kind: ModelKind.detector,
             classLabels: regionsClassLabels,
           ));
           _regionsReady = true;
-          await GuardSystem.logNative('كاشف المناطق سُجّل — تغطية المربعات متاحة');
+          await GuardSystem.logNative('كاشف المناطق NudeNet (18 فئة) سُجّل — تغطية موضعية موسّعة');
         }
       }
       return true;
@@ -356,38 +366,238 @@ class GuardBrain {
   /// تعيين مناطق المحتوى غير اللائق على إطار JPEG — يعيد أقنعة واسعة
   /// مُطبَّعة [0..1] (x, y, w, h) من موضع الكشف إلى الجذع وأعلى الفخذين.
   /// قائمة فارغة مع إنذار المصنف تعني استخدام التغطية الكاملة الاحتياطية.
-  static Future<List<List<double>>> detectRegions(Uint8List bytes) async {
+  ///
+  /// [0.3.5] المسح العميق — ثلاث مراحل بإنهاء مبكر (علاج «لا يكشف جميع
+  /// المناطق مع اختلاف الوضعيات»):
+  ///   1) الإطار الكامل كما هو — اللقطة القياسية.
+  ///   2) المناظير الأربعة (مرآة/90°/180°/270°) — الوضعيات المدوّرة
+  ///      والمقلوبة والمصوَّرة بالعرض؛ كل مربع يعاد إلى إحداثيات الإطار
+  ///      الأصلي بدالة نقية (DetectorViewTransform) قبل التوسيع.
+  ///   3) التكبير الرباعي — أربع قصّات 62.5% متراكبة 25%؛ المناطق الصغيرة
+  ///      (مصغّرات، نوافذ مدمجة) تملأ إدخال الكاشف فترتفع ثقتها.
+  /// deep=false يقصر المسح على المرحلة 1 (يُستخدم حين يكون المصنّف قد
+  /// أعلن عدم اللائق فعلًا — المربعات حينها لتحسين التغطية فقط).
+  static Future<List<List<double>>> detectRegions(
+    Uint8List bytes, {
+    bool deep = true,
+  }) async {
     if (!_regionsReady) {
       if (!await ensure()) return const [];
       if (!_regionsReady) return const [];
     }
     try {
-      final dynamic result = await NsfwDetector.instance.scanBytes(
-        bytes,
-        modelId: _regionsModelId,
-        confidenceThreshold: 0.15,
-      );
-      final dets = result.detections;
-      if (dets == null || dets.isEmpty) return const [];
-      // حتى 12 مربعًا بعتبة أقل لرفع احتمال التقاط المناطق الصغيرة أو المتعددة؛
-      // سيزيد ذلك احتمالات الإيجابيات الكاذبة ويُفضَّل هنا على تفويت الحماية.
-      final boxes = (dets.toList()
-            ..sort((a, b) => b.confidence.compareTo(a.confidence)))
-          .take(12)
-          .map((d) {
-        final bx = d.box;
-        return SensitiveBodyMask.expand(
-          label: d.label.toString(),
-          x: bx.x,
-          y: bx.y,
-          width: bx.width,
-          height: bx.height,
-        );
-      }).toList();
-      await GuardSystem.logNative('تعيين المناطق: ${boxes.length} مربعًا (أعلى ثقة ${dets.first.confidence.toStringAsFixed(2)})');
-      return boxes;
+      // المرحلة 1: الإطار الكامل
+      final direct = _expandDets(await _rawSensitive(bytes));
+      if (direct.isNotEmpty) return direct;
+      if (!deep) return const [];
+
+      // المرحلة 2 و3 تشاركان فكًّا واحدًا للإطار — بإنهاء مبكر عند أول إصابة
+      final frame = await _decodeFrame(bytes);
+      if (frame != null) {
+        try {
+          // المرحلة 2: المناظير — الوضعيات المدوّرة والمقلوبة
+          for (final view in DetectorViewTransform.extraViews) {
+            final dets = await _rawSensitiveOnView(frame, view);
+            if (dets.isEmpty) continue;
+            final boxes = <List<double>>[];
+            for (final d in dets) {
+              final bx = d.box as dynamic;
+              final original = DetectorViewTransform.inverseBox(view, <double>[
+                bx.x as double, bx.y as double, bx.width as double, bx.height as double,
+              ]);
+              boxes.add(SensitiveBodyMask.expand(
+                label: (d.label as dynamic).toString(),
+                x: original[0], y: original[1],
+                width: original[2], height: original[3],
+              ));
+            }
+            final valid = _validMasks(boxes);
+            if (valid.isNotEmpty) {
+              await GuardSystem.logNative('مناطق عبر منظير $view — ${valid.length} مربعًا');
+              return valid;
+            }
+          }
+
+          // المرحلة 3: التكبير الرباعي — المناطق الصغيرة
+          final quads = await _rawSensitiveOnQuadrants(frame);
+          if (quads.isNotEmpty) {
+            await GuardSystem.logNative('مناطق عبر التكبير الرباعي — ${quads.length} مربعًا');
+          }
+          return quads;
+        } finally {
+          frame.dispose();
+        }
+      }
+      return const [];
     } catch (e) {
       await GuardSystem.logNative('✗ فشل كاشف المناطق: $e');
+      return const [];
+    }
+  }
+
+  /// كشف خام على بايتات جاهزة، مع فلتر الفئات الحساسة حصرًا (الوجوه
+  /// والأقدام والبطن والإبط وصدر الرجل خارج نطاق الحجب المتفق عليه).
+  static Future<List<dynamic>> _rawSensitive(Uint8List bytes) async {
+    final dynamic result = await NsfwDetector.instance.scanBytes(
+      bytes,
+      modelId: _regionsModelId,
+      confidenceThreshold: 0.15,
+    );
+    final dets = result.detections as List<dynamic>?;
+    if (dets == null || dets.isEmpty) return const [];
+    return dets
+        .where((d) => SensitiveBodyMask.sensitiveDetectorLabels
+            .contains((d.label as dynamic).toString().trim().toUpperCase()))
+        .toList(growable: false);
+  }
+
+  /// توسيع الكشوفات الحساسة إلى أقنعة — حتى 12 مربعًا بترتيب الثقة تنازليًا
+  /// (العتبة 0.15 منخفضة عمدًا: الإيجابية الكاذبة أهدأ من التفويت).
+  static List<List<double>> _expandDets(List<dynamic> dets) {
+    if (dets.isEmpty) return const [];
+    final sorted = dets.toList()
+      ..sort((a, b) => (b.confidence as double).compareTo(a.confidence as double));
+    final masks = <List<double>>[];
+    for (final d in sorted.take(12)) {
+      final bx = d.box as dynamic;
+      masks.add(SensitiveBodyMask.expand(
+        label: (d.label as dynamic).toString(),
+        x: bx.x as double, y: bx.y as double,
+        width: bx.width as double, height: bx.height as double,
+      ));
+    }
+    return _validMasks(masks);
+  }
+
+  /// حصالة الأقنعة: استبعاد المربعات المقلوبة أو النحيلة بعد القصّ.
+  static List<List<double>> _validMasks(List<List<double>> masks) =>
+      masks.where((m) => m[2] > 0.01 && m[3] > 0.01).toList(growable: false);
+
+  /// فك إطار JPEG مرة واحدة وإعادة استخدامه في كل المناظير والقصّات.
+  static Future<ui.Image?> _decodeFrame(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = (await codec.getNextFrame()).image;
+      codec.dispose();
+      return frame;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// إنتاج بايتات PNG لمنظير مُدار/معكوس من الإطار مصغّرًا إلى حد أقصى
+  /// 640 لجهة الكاشف — التطبيع [0..1] يبقى صحيحًا مهما كان التصغير.
+  static Future<Uint8List?> _viewBytes(ui.Image frame, String view) async {
+    try {
+      final srcW = frame.width;
+      final srcH = frame.height;
+      final swap = view == 'rot90' || view == 'rot270';
+      final outW = swap ? srcH : srcW;
+      final outH = swap ? srcW : srcH;
+      final scale = 640.0 / (outW > outH ? outW : outH);
+      final dstW = (outW * scale).round().clamp(1, 640);
+      final dstH = (outH * scale).round().clamp(1, 640);
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder,
+          ui.Rect.fromLTWH(0, 0, dstW.toDouble(), dstH.toDouble()));
+      canvas.scale(scale);
+      switch (DetectorViewTransform.normalize(view)) {
+        case 'rot90': // مع عقارب الساعة
+          canvas.translate(outW.toDouble(), 0);
+          canvas.rotate(3.1415926535897932 / 2);
+          break;
+        case 'rot180':
+          canvas.translate(outW.toDouble(), outH.toDouble());
+          canvas.rotate(3.1415926535897932);
+          break;
+        case 'rot270': // عكس عقارب الساعة
+          canvas.translate(0, outH.toDouble());
+          canvas.rotate(-3.1415926535897932 / 2);
+          break;
+        default: // mirror
+          canvas.translate(outW.toDouble(), 0);
+          canvas.scale(-1.0, 1.0);
+      }
+      canvas.drawImage(frame, ui.Offset.zero, ui.Paint());
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(dstW, dstH);
+      picture.dispose();
+      final data = await img.toByteData(format: ui.ImageByteFormat.png);
+      img.dispose();
+      return data?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// كشف على منظير مُدار ثم إعادة مربعاته الخام إلى إحداثيات الإطار الأصلي.
+  static Future<List<dynamic>> _rawSensitiveOnView(
+      ui.Image frame, String view) async {
+    final vb = await _viewBytes(frame, view);
+    if (vb == null) return const [];
+    return _rawSensitive(vb);
+  }
+
+  /// التكبير الرباعي: أربع قصّات 62.5% متراكبة 25% من الإطار الأصلي، كل
+  /// قصّة تُمرَّر للكاشف بمحافظة على نسبتها (بلا تشويه) والمربعات تعود
+  /// إلى إحداثيات الإطار الكامل قبل التوسيع.
+  static Future<List<List<double>>> _rawSensitiveOnQuadrants(
+      ui.Image frame) async {
+    const windows = <List<double>>[
+      [0.0, 0.0, 0.625, 0.625],
+      [0.375, 0.0, 0.625, 0.625],
+      [0.0, 0.375, 0.625, 0.625],
+      [0.375, 0.375, 0.625, 0.625],
+    ];
+    final srcW = frame.width.toDouble();
+    final srcH = frame.height.toDouble();
+    try {
+      for (final win in windows) {
+        final cx = win[0], cy = win[1], cw = win[2], ch = win[3];
+        final cropW = (srcW * cw).round().clamp(1, frame.width);
+        final cropH = (srcH * ch).round().clamp(1, frame.height);
+        final sx = (srcW * cx).round();
+        final sy = (srcH * cy).round();
+        // الحفاظ على النسبة: الوجه الأكبر 640 والآخر بالتناسب
+        final scale = 640.0 / (cropW > cropH ? cropW : cropH);
+        final dstW = (cropW * scale).round().clamp(1, 640);
+        final dstH = (cropH * scale).round().clamp(1, 640);
+        final recorder = ui.PictureRecorder();
+        final canvas = ui.Canvas(recorder,
+            ui.Rect.fromLTWH(0, 0, dstW.toDouble(), dstH.toDouble()));
+        canvas.drawImageRect(
+          frame,
+          ui.Rect.fromLTWH(sx.toDouble(), sy.toDouble(),
+              cropW.toDouble(), cropH.toDouble()),
+          ui.Rect.fromLTWH(0, 0, dstW.toDouble(), dstH.toDouble()),
+          ui.Paint(),
+        );
+        final picture = recorder.endRecording();
+        final img = await picture.toImage(dstW, dstH);
+        picture.dispose();
+        final data = await img.toByteData(format: ui.ImageByteFormat.png);
+        img.dispose();
+        if (data == null) continue;
+        final dets = await _rawSensitive(data.buffer.asUint8List());
+        if (dets.isEmpty) continue;
+        final masks = <List<double>>[];
+        for (final d in dets) {
+          final bx = d.box as dynamic;
+          // من إحداثيات القصّة المُطبَّعة إلى إحداثيات الإطار الكامل
+          final fx = cx + (bx.x as double) * cw;
+          final fy = cy + (bx.y as double) * ch;
+          final fw = (bx.width as double) * cw;
+          final fh = (bx.height as double) * ch;
+          masks.add(SensitiveBodyMask.expand(
+            label: (d.label as dynamic).toString(),
+            x: fx, y: fy, width: fw, height: fh,
+          ));
+        }
+        final valid = _validMasks(masks);
+        if (valid.isNotEmpty) return valid; // إنهاء مبكر عند أول قصّة مثمرة
+      }
+      return const [];
+    } catch (_) {
       return const [];
     }
   }
@@ -443,7 +653,12 @@ class DetectorService {
     // لا نجعل المصنّف الثنائي بوابةً لكاشف المناطق: قد يفوّت صورة صغيرة
     // داخل منشور أو مشهدًا غير صريح. افحص كاشف الأجزاء في كل لقطة وادمج
     // الإشارتين؛ أي مربع حساس موجب يكفي لتفعيل الحماية.
-    final regions = await GuardBrain.detectRegions(bytes);
+    // [0.3.5] المسح العميق (مناظير + تكبير رباعي) يعمل حين يصمت المصنّف —
+    // صمام الأمان للوضعيات الصعبة؛ وحين ينذر المصنّف يكفي مسح الإطار
+    // الكامل السريع (المربعات حينها لتحسين التغطية الموضعية فقط).
+    final classifierUnsafe = parsed.score >= effective;
+    final regions =
+        await GuardBrain.detectRegions(bytes, deep: !classifierUnsafe);
     final unsafe = GuardThreshold.isUnsafeFromSignals(
       parsed.score,
       effective,
