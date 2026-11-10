@@ -27,6 +27,15 @@ import androidx.core.app.ServiceCompat
  * canGuard واضح → RecoveryNotifier يُطلق الاسترداد الصفري (حوار يؤكّد آليًا)
  * أو إشعار الإنقاذ بنقرة — فلا تبقى الحماية عمياء أبدًا. ومسح التطبيق من
  * «الأخيرة» لا يوقف الخدمة (onTaskRemoved يواصل العمل ويسجل ذلك).
+ *
+ * [0.3.4] إصلاح جذري لحلقة «غَضّ توقف عن العمل» (Keeps stopping):
+ * عقد startForegroundService لا يُعفى بإعادة التشغيل — حين يقتل المصنع
+ * العملية ويعيد النظام الخدمة بـintent = null تبقى الخدمة ملزمة باستدعاء
+ * startForeground خلال 5 ثوانٍ (علم fgRequired يبقى في سجل النظام)، وإلا
+ * RemoteServiceException → رسالة الانهيار → موت العملية → سقوط خدمة الوصول
+ * معها → الاسترداد يعيد الجلسة → القتل مجددًا → الحلقة المتكررة. الإصلاح:
+ * استدعاء startForeground أولًا في كل المسارات بلا استثناء (حتى إعادة
+ * التشغيل بلا توكن)، ثم نقرر المصير — إنقاذ بجلسة حية أو توقف هادئ بلا انهيار.
  */
 class ProjectionService : Service() {
 
@@ -51,25 +60,9 @@ class ProjectionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent == null) {
-            // [0.3.3] أعاد النظام الخدمة بعد موت العملية (START_STICKY) — التوكن
-            // مات مع العملية بحكم النظام (لا يُخزّن أبدًا). لم نعد نصمت:
-            // إنقاذ فوري — استرداد صفري (حوار يؤكّد بلا لمستك) أو إشعار بنقرة.
-            // START_NOT_STICKY هنا مقصودة: الاستعادة تعيد تشغيلنا بتصريح حي
-            // عبر ProjectionService.start، وخدمة بلا تصريح لا معنى لبقائها.
-            GuardLog.add("أعاد النظام الخدمة بعد موت العملية — بدء إنقاذ الجلسة فورًا")
-            RecoveryNotifier.maybeNotify(this)
-            return START_NOT_STICKY
-        }
-        val rc = intent.getIntExtra("resultCode", Activity.RESULT_CANCELED)
-        @Suppress("DEPRECATION")
-        val data = intent.getParcelableExtra<Intent>("data")
-        if (data == null) {
-            // إطلاق بلا توكن (عطل في النداء) — ننهي بهدوء بدل خدمة معلقة بلا نوع
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
+        // [0.3.4] startForeground أولًا في كل المسارات بلا استثناء — بما فيها
+        // إعادة التشغيل بلا توكن (intent = null): العقد النظامي باقٍ على إعادة
+        // التشغيل وهذا كان سبب حلقة «توقف عن العمل» (الشرح أعلى الملف).
         ensureChannel()
         val notification: Notification =
             NotificationCompat.Builder(this, CHANNEL_ID)
@@ -79,15 +72,41 @@ class ProjectionService : Service() {
                 .setOngoing(true)
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .build()
+        try {
+            // نوع mediaProjection شرط نظامي على API 29+ — وعلى API 28 يكفي
+            // startForeground العادي. على إعادة التشغيل بلا جلسة حية قد يرفض
+            // النوع النظامي لدى بعض الأغلفة — الاستدعاء بلا نوع ملاذ آمن يفي
+            // بالعقد ويمنع الانهيار في كل الحالات.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this, NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (t: Throwable) {
+            try { startForeground(NOTIFICATION_ID, notification) } catch (_: Throwable) {}
+        }
 
-        // نوع mediaProjection شرط نظامي على API 29+ — وعلى API 28 يكفي startForeground العادي
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        if (intent == null) {
+            // [0.3.3] أعاد النظام الخدمة بعد موت العملية (START_STICKY) — التوكن
+            // مات مع العملية بحكم النظام (لا يُخزَّن أبدًا). العقد وفّيه أعلاه فلا
+            // انهيار؛ الآن الإنقاذ (استرداد صفري أو إشعار بنقرة) ثم توقف هادئ:
+            // START_NOT_STICKY + stopSelf — الاستعادة تعيد تشغيلنا بتصريح حي
+            // عبر ProjectionService.start، وخدمة بلا تصريح لا معنى لبقائها.
+            GuardLog.add("أعاد النظام الخدمة بعد موت العملية — بدء إنقاذ الجلسة فورًا")
+            RecoveryNotifier.maybeNotify(this)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        val rc = intent.getIntExtra("resultCode", Activity.RESULT_CANCELED)
+        @Suppress("DEPRECATION")
+        val data = intent.getParcelableExtra<Intent>("data")
+        if (data == null) {
+            // إطلاق بلا توكن (عطل في النداء) — ننهي بهدوء بدل خدمة معلقة بلا نوع
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         ProjectionCaptureEngine.start(applicationContext, rc, data)
