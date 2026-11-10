@@ -59,10 +59,28 @@ class GuardThreshold {
       hasSensitiveRegions || score >= effectiveThreshold;
 }
 
-/// يوسّع كشف نقطة حساسة إلى نطاق الجذع وأعلى الفخذين بدل مربع صغير حولها.
-/// هذه تغطية هندسية محافظة وليست تجزئة دقيقة لشكل الجسم.
+/// يوسّع كشف نقطة حساسة إلى نطاق واسع من الجذع والحوض وأعلى الفخذين بدل مربع
+/// صغير حولها. هذه تغطية هندسية محافظة وليست تجزئة دقيقة أو ضمانًا لكل وضعية.
 class SensitiveBodyMask {
   SensitiveBodyMask._();
+
+  /// الفئات المكشوفة التي نغطيها من NudeNet، إضافة إلى الأسماء القديمة
+  /// المدعومة للتوافق. لا تشمل الوجه أو القدمين أو الأجزاء المغطاة.
+  static const Set<String> sensitiveLabels = {
+    'ANUS', 'ANUS_EXPOSED', 'PENIS', 'VAGINA', 'MAKE_LOVE', 'NIPPLE',
+    'FEMALE_GENITALIA_EXPOSED', 'MALE_GENITALIA_EXPOSED',
+    'FEMALE_BREAST_EXPOSED', 'MALE_BREAST_EXPOSED', 'BUTTOCKS_EXPOSED',
+    'BELLY_EXPOSED', 'THIGH_EXPOSED', 'BACK_EXPOSED',
+    'LOWER_BACK_EXPOSED', 'TORSO_BACK_EXPOSED',
+  };
+
+  static String normalizeLabel(String label) => label
+      .trim()
+      .toUpperCase()
+      .replaceAll(RegExp(r'[\s-]+'), '_');
+
+  static bool isSensitiveLabel(String label) =>
+      sensitiveLabels.contains(normalizeLabel(label));
 
   static List<double> expand({
     required String label,
@@ -71,35 +89,45 @@ class SensitiveBodyMask {
     required double width,
     required double height,
   }) {
-    final normalized = label.trim().toUpperCase();
+    final normalized = normalizeLabel(label);
     final centerX = x + width / 2;
     final centerY = y + height / 2;
-    final upperBody = const {
+    final back = const {
+      'BACK', 'BACK_EXPOSED', 'LOWER_BACK_EXPOSED', 'TORSO_BACK_EXPOSED',
+    }.contains(normalized);
+    final upperBody = back || const {
+      'BREAST', 'CHEST', 'CHEST_EXPOSED',
       'NIPPLE', 'FEMALE_BREAST_EXPOSED', 'MALE_BREAST_EXPOSED',
       'BELLY_EXPOSED', 'ARMPITS_EXPOSED', 'BACK_EXPOSED', 'TORSO_EXPOSED',
     }.contains(normalized);
     final lowerBody = const {
-      'ANUS', 'PENIS', 'VAGINA', 'ANUS_EXPOSED',
+      'BUTTOCK', 'BUTTOCKS', 'BUTTOCKS_EXPOSED', 'THIGH', 'THIGH_EXPOSED',
+      'ANUS', 'ANUS_EXPOSED', 'PENIS', 'VAGINA', 'GENITALIA_EXPOSED',
       'MALE_GENITALIA_EXPOSED', 'FEMALE_GENITALIA_EXPOSED',
-      'BUTTOCKS_EXPOSED', 'THIGH_EXPOSED',
     }.contains(normalized);
 
-    final minWidth = normalized == 'MAKE_LOVE' ? 0.72 : 0.54;
+    // نوسّع أفقيًا بما يكفي لتغطية الجذع والحوض حول نقطة الكشف، مع قصّ الحدود
+    // لاحقًا. العلاقة لا تعتمد على كون نقطة الكشف في وسط الصورة.
+    final minWidth = normalized == 'MAKE_LOVE' ? 0.82 : 0.68;
     final targetWidth = (width * 3.5 > minWidth ? width * 3.5 : minWidth)
         .clamp(0.0, 1.0)
         .toDouble();
     final left = (centerX - targetWidth / 2).clamp(0.0, 1.0).toDouble();
     final right = (centerX + targetWidth / 2).clamp(0.0, 1.0).toDouble();
 
-    final topReach = upperBody
-        ? (height * 2 > 0.16 ? height * 2 : 0.16)
+    final topReach = back
+        ? (height * 7 > 0.62 ? height * 7 : 0.62)
+        : upperBody
+        ? (height * 2 > 0.20 ? height * 2 : 0.20)
         : lowerBody
-            ? (height * 5.5 > 0.45 ? height * 5.5 : 0.45)
+            ? (height * 5.5 > 0.50 ? height * 5.5 : 0.50)
             : (height * 4 > 0.34 ? height * 4 : 0.34);
-    final bottomReach = upperBody
-        ? (height * 5.5 > 0.45 ? height * 5.5 : 0.45)
+    final bottomReach = back
+        ? (height * 5.5 > 0.50 ? height * 5.5 : 0.50)
+        : upperBody
+        ? (height * 5.5 > 0.50 ? height * 5.5 : 0.50)
         : lowerBody
-            ? (height * 2 > 0.18 ? height * 2 : 0.18)
+            ? (height * 2 > 0.26 ? height * 2 : 0.26)
             : (height * 4 > 0.38 ? height * 4 : 0.38);
     final top = (centerY - topReach).clamp(0.0, 1.0).toDouble();
     final bottom = (centerY + bottomReach).clamp(0.0, 1.0).toDouble();

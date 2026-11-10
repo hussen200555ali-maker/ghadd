@@ -276,20 +276,35 @@ class DetectorChannel {
 /// في الحزمة قبل أي فحص. النموذجان داخل أصول الـAPK — يُنسخان مرة واحدة إلى
 /// ملفات التطبيق ثم يُسجلان عبر registerModel. لا شبكة إطلاقًا.
 ///
-/// [0.3.0] كاشف المناطق: EraX-NSFW YOLO11n (Apache 2.0) — مربعات مكشوفة
-/// بإحداثيات مُطبَّعة، مُحوَّل TFLite ومتحقق رقميًا (IoU ‎0.93–0.96 مقابل
-/// مرجع PyTorch). يُستخدم لتعيين مواضع المحتوى بعد إنذار المصنّف — لتغطية
-/// المناطق فقط بدل الشاشة كاملة.
+/// [0.4.0] كاشف المناطق: NudeNet YOLOv8m ذو 18 فئة (AGPL-3.0)، مضمّن محليًا.
+/// تُستخدم صناديق الأجزاء المكشوفة لتحديد موضع التغطية؛ الأجزاء غير الحساسة
+/// مثل الوجه والقدمين والأجزاء المغطاة تُستبعد من سياسة الحجب.
 class GuardBrain {
   GuardBrain._();
 
   static const _modelId = 'ghadd_nsfw';
   static const _regionsModelId = 'ghadd_nsfw_regions';
 
-  /// ترتيب فئات كاشف EraX مطابق لـnames dict للنموذج — لا يُعتمد عليه في
-  /// الحُكم (الواجهة تستخدم aggregatedCategory) لكنه التزام توثيقي.
+  /// ترتيب فئات NudeNet مطابق لترتيب قنوات المخرجات في نموذج v3.4 TFLite.
   static const regionsClassLabels = <String>[
-    'anus', 'make_love', 'nipple', 'penis', 'vagina',
+    'FEMALE_GENITALIA_COVERED',
+    'FACE_FEMALE',
+    'BUTTOCKS_EXPOSED',
+    'FEMALE_BREAST_EXPOSED',
+    'FEMALE_GENITALIA_EXPOSED',
+    'MALE_BREAST_EXPOSED',
+    'ANUS_EXPOSED',
+    'FEET_EXPOSED',
+    'BELLY_COVERED',
+    'FEET_COVERED',
+    'ARMPITS_COVERED',
+    'ARMPITS_EXPOSED',
+    'FACE_MALE',
+    'BELLY_EXPOSED',
+    'MALE_GENITALIA_EXPOSED',
+    'ANUS_COVERED',
+    'FEMALE_BREAST_COVERED',
+    'BUTTOCKS_COVERED',
   ];
 
   static bool _ready = false;
@@ -313,30 +328,32 @@ class GuardBrain {
   /// يُستدعى من المحركين (الرئيسي للواجهة والتشخيص، ومحرك guardMain للكشف).
   /// فشل كاشف المناطق لا يُسقط المصنّف — التغطية تعمل كاملةً كاحتياط.
   static Future<bool> ensure() async {
-    if (_ready) return true;
+    if (_ready && _regionsReady) return true;
     try {
       final prep = await GuardSystem.prepareModel();
-      if (prep['ok'] != true) {
-        await GuardSystem.logNative('✗ فشل تجهيز النموذج المدمج');
-        return false;
+      if (!_ready) {
+        if (prep['ok'] != true) {
+          await GuardSystem.logNative('✗ فشل تجهيز النموذج المدمج');
+          return false;
+        }
+        final path = prep['path'] as String;
+        await NsfwDetector.instance.registerModel(ModelRegistration(
+          id: _modelId,
+          displayName: 'غَضّ — نموذج مدمج (بلا شبكة)',
+          assetPath: path,
+          inputSize: 224,
+        ));
+        _ready = true;
+        await GuardSystem.logNative('النموذج المدمج سُجّل في محرك الكشف — جاهز للفحص');
       }
-      final path = prep['path'] as String;
-      await NsfwDetector.instance.registerModel(ModelRegistration(
-        id: _modelId,
-        displayName: 'غَضّ — نموذج مدمج (بلا شبكة)',
-        assetPath: path,
-        inputSize: 224,
-      ));
-      _ready = true;
-      await GuardSystem.logNative('النموذج المدمج سُجّل في محرك الكشف — جاهز للفحص');
 
-      // [0.3.0] كاشف المناطق — فشله غير قاتل (الاحتياط: تغطية كاملة).
+      // [0.4.0] كاشف المناطق متعدد الفئات — فشله غير قاتل (الاحتياط: تغطية كاملة).
       if (!_regionsReady && prep['regionsOk'] == true) {
         final rpath = prep['regionsPath'] as String?;
         if (rpath != null && rpath.isNotEmpty) {
           await NsfwDetector.instance.registerModel(ModelRegistration(
             id: _regionsModelId,
-            displayName: 'غَضّ — كاشف المناطق (EraX YOLO11n، Apache 2.0)',
+            displayName: 'غَضّ — كاشف المناطق (NudeNet 18-class، AGPL-3.0)',
             assetPath: rpath,
             inputSize: 640,
             kind: ModelKind.detector,
@@ -349,7 +366,7 @@ class GuardBrain {
       return true;
     } catch (e) {
       await GuardSystem.logNative('✗ فشل تسجيل النموذج: $e');
-      return false;
+      return _ready;
     }
   }
 
@@ -369,10 +386,14 @@ class GuardBrain {
       );
       final dets = result.detections;
       if (dets == null || dets.isEmpty) return const [];
-      // حتى 12 مربعًا بعتبة أقل لرفع احتمال التقاط المناطق الصغيرة أو المتعددة؛
-      // سيزيد ذلك احتمالات الإيجابيات الكاذبة ويُفضَّل هنا على تفويت الحماية.
-      final boxes = (dets.toList()
-            ..sort((a, b) => b.confidence.compareTo(a.confidence)))
+      // رشّح الوجوه والقدمين والأجزاء المغطاة قبل تطبيق حدّ الصناديق.
+      final candidates = dets
+          .where((d) => SensitiveBodyMask.isSensitiveLabel(d.label.toString()))
+          .toList()
+        ..sort((a, b) => b.confidence.compareTo(a.confidence));
+      if (candidates.isEmpty) return const [];
+      // حتى 12 مربعًا حساسًا بعتبة منخفضة لتفضيل عدم تفويت المنطقة على قصّها.
+      final boxes = candidates
           .take(12)
           .map((d) {
         final bx = d.box;
@@ -384,7 +405,7 @@ class GuardBrain {
           height: bx.height,
         );
       }).toList();
-      await GuardSystem.logNative('تعيين المناطق: ${boxes.length} مربعًا (أعلى ثقة ${dets.first.confidence.toStringAsFixed(2)})');
+      await GuardSystem.logNative('تعيين المناطق الحساسة: ${boxes.length} مربعًا (أعلى ثقة ${candidates.first.confidence.toStringAsFixed(2)})');
       return boxes;
     } catch (e) {
       await GuardSystem.logNative('✗ فشل كاشف المناطق: $e');
@@ -392,14 +413,25 @@ class GuardBrain {
     }
   }
 
-  /// تسخين النموذج (تحميله في TFLite قبل أول فحص حقيقي) — فحص تجريبي واحد.
+  /// تسخين المصنّف والكاشف قبل أول إطار حقيقي لتفادي كلفة التحميل على لقطة الشاشة.
   static Future<void> warmUp() async {
     try {
       await NsfwDetector.instance
           .scanBytes(warmupJpeg, modelId: _modelId, confidenceThreshold: 0.7);
-      await GuardSystem.logNative('النموذج محمّل ودافئ — أول فحص حقيقي سيكون سريعًا');
+      await GuardSystem.logNative('المصنّف محمّل ودافئ');
     } catch (e) {
-      await GuardSystem.logNative('✗ فشل تسخين النموذج: $e');
+      await GuardSystem.logNative('✗ فشل تسخين المصنّف: $e');
+    }
+    if (!_regionsReady) return;
+    try {
+      await NsfwDetector.instance.scanBytes(
+        warmupJpeg,
+        modelId: _regionsModelId,
+        confidenceThreshold: 0.15,
+      );
+      await GuardSystem.logNative('كاشف NudeNet محمّل ودافئ');
+    } catch (e) {
+      await GuardSystem.logNative('✗ فشل تسخين كاشف NudeNet: $e');
     }
   }
 }

@@ -45,6 +45,32 @@ void main() {
       expect(GuardThreshold.isUnsafeFromSignals(0.46, 0.45), isTrue);
     });
 
+    test('سياسة NudeNet تغطي الأجزاء المكشوفة وتستبعد الفئات غير المستهدفة', () {
+      for (final label in [
+        'FEMALE_BREAST_EXPOSED',
+        'MALE_BREAST_EXPOSED',
+        'BUTTOCKS_EXPOSED',
+        'FEMALE_GENITALIA_EXPOSED',
+        'MALE_GENITALIA_EXPOSED',
+        'ANUS_EXPOSED',
+        'BELLY_EXPOSED',
+        'nipple',
+      ]) {
+        expect(SensitiveBodyMask.isSensitiveLabel(label), isTrue, reason: label);
+      }
+      for (final label in [
+        'FACE_FEMALE',
+        'FEET_EXPOSED',
+        'ARMPITS_EXPOSED',
+        'FEMALE_BREAST_COVERED',
+        'BUTTOCKS_COVERED',
+        'ANUS_COVERED',
+      ]) {
+        expect(SensitiveBodyMask.isSensitiveLabel(label), isFalse, reason: label);
+      }
+      expect(SensitiveBodyMask.isSensitiveLabel(' female breast exposed '), isTrue);
+    });
+
     test('قناع الصدر يمتد إلى الجذع وأعلى الفخذين ويبقى داخل الصورة', () {
       final mask = SensitiveBodyMask.expand(
         label: 'NIPPLE',
@@ -72,6 +98,53 @@ void main() {
       expect(mask[1], lessThanOrEqualTo(0.46));
       expect(mask[0] + mask[2], lessThanOrEqualTo(1.0));
       expect(mask[1] + mask[3], lessThanOrEqualTo(1.0));
+    });
+
+    test('قناع الظهر يغطي نطاقًا محافظًا حتى الأرداف عند ظهور الظهر', () {
+      final mask = SensitiveBodyMask.expand(
+        label: 'BACK_EXPOSED',
+        x: 0.42,
+        y: 0.42,
+        width: 0.16,
+        height: 0.08,
+      );
+      expect(mask[0], lessThanOrEqualTo(0.16));
+      expect(mask[1], 0.0);
+      expect(mask[2], greaterThanOrEqualTo(0.68));
+      expect(mask[1] + mask[3], greaterThanOrEqualTo(0.90));
+      expect(mask[0] + mask[2], lessThanOrEqualTo(1.0));
+    });
+
+    test('قناع الأرداف يمتد إلى الظهر وأعلى الفخذين', () {
+      final mask = SensitiveBodyMask.expand(
+        label: 'BUTTOCKS_EXPOSED',
+        x: 0.40,
+        y: 0.61,
+        width: 0.20,
+        height: 0.10,
+      );
+      expect(mask[0], lessThanOrEqualTo(0.16));
+      expect(mask[1], lessThanOrEqualTo(0.16));
+      expect(mask[2], greaterThanOrEqualTo(0.68));
+      expect(mask[1] + mask[3], greaterThanOrEqualTo(0.90));
+    });
+
+    test('تطبيع أسماء أجزاء الجسم يقبل المسافات والشرطة', () {
+      final spaced = SensitiveBodyMask.expand(
+        label: 'lower back exposed',
+        x: 0.40,
+        y: 0.42,
+        width: 0.20,
+        height: 0.08,
+      );
+      final canonical = SensitiveBodyMask.expand(
+        label: 'LOWER_BACK_EXPOSED',
+        x: 0.40,
+        y: 0.42,
+        width: 0.20,
+        height: 0.08,
+      );
+      expect(spaced, canonical);
     });
 
     test('أقرب قالب مسبق للمنزلق', () {

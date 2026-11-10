@@ -161,28 +161,21 @@ object OverlayController {
     }
 
     /**
-     * رسم مستطيلات الطمس: حجب داكن شبه معتم بزوايا مستديرة وحد رقيق بلون
-     * العلامة — يُحجب البصر ويبقى بقية الشاشة ظاهرة تمامًا.
+     * رسم مستطيلات حجب معتمة بالكامل. لا نستخدم شفافية أو زوايا مستديرة كي لا
+     * يبقى أي جزء من المحتوى حساسًا ظاهرًا عند أطراف القناع.
      */
     private class RegionCoverView(context: Context, private val regions: List<RectF>) :
         View(context) {
 
-        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(235, 12, 16, 24)
+        private val fill = Paint().apply {
+            color = Color.rgb(8, 10, 16)
             style = Paint.Style.FILL
         }
-        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(190, 38, 166, 189)
-            style = Paint.Style.STROKE
-            strokeWidth = resources.displayMetrics.density * 2f
-        }
-        private val radius = resources.displayMetrics.density * 14f
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             for (r in regions) {
-                canvas.drawRoundRect(r, radius, radius, fill)
-                canvas.drawRoundRect(r, radius, radius, stroke)
+                canvas.drawRect(r, fill)
             }
         }
     }

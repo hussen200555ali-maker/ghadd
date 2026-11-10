@@ -1,6 +1,6 @@
 // اختبار التكامل على محاكي أندرويد حقيقي — يثبت سلسلة الكشف كاملة على النظام نفسه
 // الذي يستخدمه المستخدم (أندرويد 9 = API 28 في سير عمل المحاكي):
-//   1) النموذج المدمج (88MB) موجود فعلًا داخل أصول الـAPK
+//   1) النموذج المدمج (88MB) وكاشف NudeNet (51.9MB) موجودان فعلًا في الـAPK
 //   2) نسخه إلى ملفات التطبيق الخاصة داخل العزلة (نفس سياسة registerModel)
 //   3) تسجيله في محرك الكشف (تحقق TFL3 + جدول ModelRegistry الأصلي)
 //   4) استدلال TFLite حقيقي على الصورة التجريبية — فئات سليمة ومجاميع احتمالات ≈ 1
@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ghadd/core/decision.dart';
 import 'package:ghadd/services/native_bridge.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
@@ -50,12 +51,12 @@ void main() {
     preparedPath = f.path;
     debugPrint('[SELFTEST] setUpAll: النسخ إلى ${f.path} ✓');
 
-    // [0.3.0] نموذج المناطق (EraX YOLO11n ~10.5MB) — نفس العقد
+    // [0.4.0] كاشف NudeNet YOLOv8m ذي 18 فئة (~51.9MB) — نفس العقد
     final rdata = await rootBundle.load('assets/models/nsfw_regions.tflite').timeout(
           const Duration(minutes: 2),
           onTimeout: () => throw StateError('علِق > المهلة: rootBundle.load لنموذج المناطق علِق >2د'),
         );
-    assert(rdata.lengthInBytes > 5 * 1024 * 1024,
+    assert(rdata.lengthInBytes > 45 * 1024 * 1024,
         'نموذج المناطق غير موجود أو مقطوع — الحجم الفعلي ${rdata.lengthInBytes}');
     debugPrint('[SELFTEST] setUpAll: نموذج المناطق ${rdata.lengthInBytes} بايت ✓');
     final rf = File('${dir.path}/nsfw_regions_it.tflite');
@@ -168,28 +169,30 @@ void main() {
           reason: 'نتيجة الاستدلال غير مستقرة بين نداءين متتاليين على نفس المدخل');
       debugPrint('[SELFTEST] مرحلة 5 ✓: $sa ≈ $sb — السلسلة كلها سليمة');
 
-      // ===== 7 [0.3.0]: سلسلة المناطق — كاشف YOLO مسجّل + استدلال مربعات =====
-      debugPrint('[SELFTEST] مرحلة 6: كاشف المناطق (EraX YOLO11n)…');
+      // ===== 7 [0.4.0]: NudeNet 18-class — تسجيل واستدلال TFLite =====
+      debugPrint('[SELFTEST] مرحلة 6: كاشف المناطق (NudeNet YOLOv8m, 18 فئة)…');
       expect(GuardBrain.regionsReady, isTrue,
           reason: 'كاشف المناطق لم يُسجّل في GuardBrain.ensure رغم توفر النموذج');
+      expect(GuardBrain.regionsClassLabels.length, 18,
+          reason: 'جدول فئات NudeNet يجب أن يطابق 18 قناة كشف');
       final regScan = await NsfwDetector.instance
           .scanBytes(GuardBrain.warmupJpeg,
               modelId: GuardBrain.regionsModelId, confidenceThreshold: 0.25)
           .timeout(const Duration(minutes: 5),
               onTimeout: () => throw StateError('علِق > المهلة: كاشف المناطق علِق >5د'));
-      // اكتمال الحالة يثبت السلسلة الأصلية كاملةً: تحميل النموذج 10.5MB داخل
-      // العزلة + استدلال YOLO [1,9,8400] + فك المربعات وNMS بلا أي استثناء.
+      // اكتمال الحالة يثبت السلسلة كاملةً: تحميل TFLite 18-class + استدلال
+      // YOLO [1,22,A] + فك المربعات وNMS بلا أي استثناء.
       expect(regScan.status, ScanStatus.completed,
           reason: 'كشف المناطق لم يكتمل (${regScan.status}) — خطأ تحميل/استدلال');
-      // [توثيق الحزمة] detections == null هو السلوك الموثق حين لا يُصدر الكاشف
-      // مربعات فوق العتبة (BC-safe) — والصورة الرمادية الساكنة يجب ألا تُنتج
-      // أي مربع أصلًا (فحص الإيجابيات الكاذبة البنيوية على إطار بريء).
-      final dets = regScan.detections;
-      expect(dets == null || dets.isEmpty, isTrue,
-          reason: 'صورة رمادية ساكنة أنتجت ${dets?.length ?? 0} مربعًا — إيجابية كاذبة بنيوية في فك YOLO');
-      debugPrint('[SELFTEST] مرحلة 6 ✓: الكاشف مكتمل ومربعات الرمادية = 0 — سلسلة المناطق سليمة');
+      // قد تظهر فئات عامة؛ يجب ألا تمر أي فئة حساسة من إطار رمادي آمن.
+      final dets = regScan.detections ?? const [];
+      final sensitiveDets = dets
+          .where((d) => SensitiveBodyMask.isSensitiveLabel(d.label))
+          .toList();
+      expect(sensitiveDets, isEmpty,
+          reason: 'إطار رمادي آمن أنتج ${sensitiveDets.length} كشفًا حساسًا');
+      debugPrint('[SELFTEST] مرحلة 6 ✓: NudeNet مكتمل؛ ${dets.length} صندوقًا و0 حساس على الرمادي');
     },
     timeout: const Timeout(Duration(minutes: 25)),
   );
 }
-

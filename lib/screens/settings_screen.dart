@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app.dart';
 import '../services/native_bridge.dart';
@@ -77,17 +78,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             const SizedBox(height: 8),
-            // [0.3.0] وضع المناطق — تجربة المستخدم المثالية: يُغطى المكتشف فقط
-            // ويبقى بقية الشاشة صالحة للعمل (اللمس يمر عبر التغطية).
+            // [0.4.0] وضع المناطق — كشف NudeNet وتغطية هندسية واسعة.
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               activeThumbColor: GuardTheme.tealDeep,
               title: const Text('تغطية المناطق المكتشفة فقط',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               subtitle: const Text(
-                'عند الكشف تُغطى الصورة الحساسة وحدها بمستطيل — وتبقى النصوص وبقية '
-                'الشاشة ظاهرة ويمكنك متابعة عملك وتمريرك كالمعتاد (اللمس يمر عبر '
-                'التغطية). عند تعذر تحديد المواضع تُطبَّق التغطية الكاملة احتياطًا.',
+                'يكشف NudeNet الثديين والأرداف والأعضاء الحساسة المكشوفة والبطن، '
+                'ثم يوسّع القناع حولها. تُستبعد الوجوه والقدمين والأجزاء المغطاة. '
+                'يبقى اللمس والتمرير فعالين؛ وعند إنذار المصنّف دون موضع موثوق تُطبّق '
+                'التغطية الكاملة احتياطًا. لا يضمن النموذج كشف الظهر أو الفخذين أو كل وضعية.',
                 style: TextStyle(fontSize: 12.5),
               ),
               value: GuardSettings.regionMode,
@@ -149,8 +150,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+            const Divider(height: 28),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('التراخيص ومصدر النموذج'),
+              subtitle: const Text('NudeNet · AGPL-3.0 · إشعارات الأوزان المضمّنة'),
+              trailing: const Icon(Icons.open_in_new),
+              onTap: _showModelLicenses,
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showModelLicenses() async {
+    final bundle = DefaultAssetBundle.of(context);
+    final notices = await bundle.loadString('MODEL_LICENSES.md');
+    final license = await bundle.loadString('LICENSE');
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('التراخيص وإشعارات النموذج'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: MediaQuery.sizeOf(context).height * 0.65,
+          child: SingleChildScrollView(
+            child: SelectableText('$notices\n\n$license'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إغلاق'),
+          ),
+        ],
       ),
     );
   }

@@ -20,6 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: تحقق من بصمة NudeNet المضمّن
+        run: echo "20974db0e4bc3f158af86d9fc58315a801bbb8ba7dd26e005d6bf8b650df1e33  assets/models/nsfw_regions.tflite" | sha256sum --check
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
