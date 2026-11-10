@@ -91,7 +91,7 @@ jobs:
             adb install build/app/outputs/flutter-apk/app-release.apk
             adb shell am start -W -n app.ghadd.guard/.MainActivity
             sleep 20
-            PID=$(adb shell pidof app.ghadd.guard | tr -d '\r'); if [ -z "$PID" ]; then echo "::error::نسخة الإصدار انهارت بعد الإقلاع على أندرويد 9!"; exit 6; fi
+            PID=$(adb shell pidof app.ghadd.guard | tr -cd '0-9'); if [ -z "$PID" ]; then echo "::error::نسخة الإصدار انهارت بعد الإقلاع على أندرويد 9!"; exit 6; fi
             echo "نسخة الإصدار تعمل على أندرويد 9 — PID: $PID"
             echo "=== 3/3 التقاط أدلة مرئية وسجلات ==="
             adb exec-out screencap -p > /tmp/ghadd-emulator.png || true
