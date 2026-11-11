@@ -2,8 +2,11 @@ package app.ghadd.guard
 
 import android.content.Context
 import android.util.Log
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.SequenceInputStream
 import java.net.IDN
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -210,10 +213,30 @@ object WebBlocklist {
     private fun mapGzAsset(context: Context, asset: String, fileName: String): Pair<ByteBuffer, Int>? {
         val f = File(context.filesDir, fileName)
         if (!f.exists() || f.length() == 0L) {
-            context.assets.open(asset).use { input ->
-                GZIPInputStream(input, 1 shl 16).use { gz ->
-                    FileOutputStream(f).use { out -> gz.copyTo(out, 1 shl 16) }
+            // [إصلاح 0.3.6] AGP يفك ضغط أصول gz ويُسقط اللاحقة عند التغليف
+            // (وجدناه في الإصدار الأول: adult.txt.gz صار adult.txt محتوى نصيًا).
+            // نجرب الاسم الأصلي ثم الاسم المجرد، ونشمّ أول بايتين كي نعرف
+            // هل المحتوى gzip حقيقي أم مفكوك مسبقًا — الحالتان مؤسّستان.
+            val raw = try {
+                context.assets.open(asset)
+            } catch (_: Throwable) {
+                context.assets.open(asset.removeSuffix(".gz"))
+            }
+            raw.use { src ->
+                val head = ByteArray(2)
+                var read = 0
+                while (read < 2) {
+                    val r = src.read(head, read, 2 - read)
+                    if (r < 0) break
+                    read += r
                 }
+                val isGzip = read == 2 && head[0] == 0x1f.toByte() && head[1] == 0x8b.toByte()
+                // أعِد البايتين المقروءين إلى المقدمة أولًا — GZIPInputStream يقرأ
+                // ترويسته عند الإنشاء فلا يجوز تركيبه قبل إعادة البايتات
+                val combined: InputStream = SequenceInputStream(ByteArrayInputStream(head.copyOf(read)), src)
+                val stream: InputStream =
+                    if (isGzip) GZIPInputStream(combined, 1 shl 16) else combined
+                FileOutputStream(f).use { out -> stream.copyTo(out, 1 shl 16) }
             }
         }
         if (!f.exists() || f.length() == 0L) return null
