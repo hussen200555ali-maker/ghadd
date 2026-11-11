@@ -283,8 +283,9 @@ object OverlayController {
             wm.addView(root, params)
             siteWindow = root
             // إخفاء آلي احتياطي — لا نترك شاشة حجب عالقة إذا خرج المستخدم بغير الزر
-            siteAutoHide = Runnable { removeSiteView(root) }
-            mainHandler.postDelayed(siteAutoHide, 7_000L)
+            val autoHide = Runnable { removeSiteView(root) }
+            siteAutoHide = autoHide
+            mainHandler.postDelayed(autoHide, 7_000L)
         } catch (_: Throwable) {
         }
     }
