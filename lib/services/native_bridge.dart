@@ -30,6 +30,12 @@ class GuardSettings {
   /// مع التغطية الكاملة احتياطًا عند تعذر تحديد المواضع. مرآته GuardPrefs.regionMode.
   static bool regionMode = true;
 
+  /// [0.3.6] حجب المواقع المشبوهة (افتراضي: مفعّل — طبقة الحماية قبل أن يفتح
+  /// المحتوى أصلًا): يمنع فتح المواقع المصنّفة إباحيًا أو احتياليًا/خبيثًا في
+  /// المتصفحات — مطابقة محلية 100% من قائمة بأكثر من 1.2 مليون نطاق مدمجة داخل
+  /// الـAPK، بلا شبكة إطلاقًا ولا يُسجّل أي رابط تزوره. مرآته GuardPrefs.webBlocking.
+  static bool webBlocking = true;
+
   static const _channel = MethodChannel('ghadd/control');
 
   /// استعادة الحالة من التفضيلات المحلية عند الإقلاع (قبل أي عرض للواجهة).
@@ -41,6 +47,7 @@ class GuardSettings {
     whitelist = p.getStringList('ghadd_whitelist') ?? const [];
     expandedCoverage = p.getBool('ghadd_expanded') ?? true;
     regionMode = p.getBool('ghadd_region_mode') ?? true;
+    webBlocking = p.getBool('ghadd_web_blocking') ?? true;
   }
 
   /// يدفع الإعدادات كاملة إلى المرآتين (محلية + أصلية) بعد أي تعديل.
@@ -52,6 +59,7 @@ class GuardSettings {
     await p.setStringList('ghadd_whitelist', whitelist);
     await p.setBool('ghadd_expanded', expandedCoverage);
     await p.setBool('ghadd_region_mode', regionMode);
+    await p.setBool('ghadd_web_blocking', webBlocking);
     try {
       await _channel.invokeMethod('sync', {
         'consent': consent,
@@ -60,6 +68,7 @@ class GuardSettings {
         'whitelist': whitelist,
         'expanded': expandedCoverage,
         'regionMode': regionMode,
+        'webBlocking': webBlocking,
       });
     } on PlatformException {
       // النموذج الأولي: نتجاهل بهدوء إن لم تكن الطبقة الأصلية جاهزة بعد

@@ -67,6 +67,18 @@ object GuardPrefs {
     fun setAutoRecovery(ctx: Context, value: Boolean) =
         sp(ctx).edit().putBoolean("auto_recovery", value).apply()
 
+    /**
+     * [0.3.6] حجب المواقع المشبوهة (افتراضيًا مفعّل — طبقة الحماية قبل أن يفتح
+     * المحتوى أصلًا): مراقبة شريط عنوان المتصفحات عبر خدمة إمكانية الوصول
+     * ومطابقة النطاق محليًا 100% ضد قائمة مدمجة داخل الـAPK (إباحي + احتيالي/
+     * خبيث). عند المطابقة: الخروج من الصفحة آليًا + شاشة حجب فوق كل شيء.
+     * لا شبكة إطلاقًا ولا يُسجَّل أي رابط تزوره — عدّادات أرقام فقط.
+     */
+    fun webBlocking(ctx: Context): Boolean = sp(ctx).getBoolean("web_blocking", true)
+
+    fun setWebBlocking(ctx: Context, value: Boolean) =
+        sp(ctx).edit().putBoolean("web_blocking", value).apply()
+
     fun isWhitelisted(ctx: Context, packageName: String): Boolean =
         sp(ctx).getStringSet("whitelist", emptySet())?.contains(packageName) ?: false
 
@@ -86,6 +98,19 @@ object GuardPrefs {
             .apply()
     }
 
+    /** [0.3.6] عداد حجب المواقع — أرقام وتصنيف فقط، بلا أي رابط أو نطاق. */
+    fun incrementSiteBlocked(ctx: Context, category: String) {
+        val p = sp(ctx)
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .format(java.util.Date())
+        p.edit()
+            .putInt("sites_blocked_total", p.getInt("sites_blocked_total", 0) + 1)
+            .putInt("sites_blocked_$today", p.getInt("sites_blocked_$today", 0) + 1)
+            .putString("last_site_blocked_at", java.lang.System.currentTimeMillis().toString())
+            .putString("last_site_category", category)
+            .apply()
+    }
+
     fun stats(ctx: Context): Map<String, Any> {
         val p = sp(ctx)
         val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
@@ -94,7 +119,10 @@ object GuardPrefs {
             "blocked_total" to p.getInt("blocked_total", 0),
             "blocked_today" to p.getInt("blocked_$today", 0),
             "last_blocked_at" to (p.getString("last_blocked_at", null) ?: ""),
-            "last_blocked_app" to (p.getString("last_blocked_app", null) ?: "")
+            "last_blocked_app" to (p.getString("last_blocked_app", null) ?: ""),
+            "sites_blocked_total" to p.getInt("sites_blocked_total", 0),
+            "sites_blocked_today" to p.getInt("sites_blocked_$today", 0),
+            "last_site_category" to (p.getString("last_site_category", null) ?: "")
         )
     }
 }

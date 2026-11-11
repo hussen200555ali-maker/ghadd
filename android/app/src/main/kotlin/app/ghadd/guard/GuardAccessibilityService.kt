@@ -41,6 +41,35 @@ class GuardAccessibilityService : AccessibilityService() {
         const val WATCHDOG_MS = 5_000L
         const val PERIODIC_SCAN_MS = 1_200L
 
+        /** [0.3.6] مهلة تجميع أحداث المتصفح قبل قراءة شريط العنوان. */
+        const val URL_DEBOUNCE_MS = 300L
+
+        /** [0.3.6] فترة كف للموقع نفسه كي لا يُهاجَم المستخدم بحجب مكرر. */
+        const val SITE_BLOCK_REPEAT_MS = 60_000L
+
+        /**
+         * [0.3.6] المتصفحات التي يُراقب شريط عناوينها للحجب المحلي.
+         * معرّات شريط العنوان تُبنى بصيغة "<الحزمة>:id/<اسم>" فيسوع البحث
+         * مع كل متصفح، والاحتياط العام يجد الشريط إن اختلفت أسماء الموارد.
+         */
+        val BROWSERS = setOf(
+            "com.android.chrome",
+            "com.sec.android.app.sbrowser",
+            "com.sec.android.app.sbrowser.beta",
+            "org.mozilla.firefox",
+            "org.mozilla.focus",
+            "com.brave.browser",
+            "com.microsoft.emmx",
+            "com.opera.browser",
+            "com.opera.mini.native",
+            "com.opera.touch",
+            "com.duckduckgo.mobile.android",
+            "com.UCMobile.intl",
+            "mark.via.gp",
+            "ru.yandex.searchplugin",
+            "com.google.android.googlequicksearchbox"
+        )
+
         @Volatile
         var instance: GuardAccessibilityService? = null
             private set
@@ -48,6 +77,14 @@ class GuardAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val screenshotExecutor = Executors.newSingleThreadExecutor()
+    /** [0.3.6] خيط خلفي وحيد لفحص الروابط: قراءة شجرة النافذة + البحث الثنائي بلا إغراق الخيط الرئيسي. */
+    private val urlExecutor = Executors.newSingleThreadExecutor()
+    private var urlCheckScheduled = false
+    /** آخر نص شريط عنوان فُحص — يُقرأ ويُكتب من urlExecutor حصريًا. */
+    private var lastUrlRawChecked: String? = null
+    /** آخر موقع محجوب وزمنه — من الخيط الرئيسي حصريًا (كفّ التكرار). */
+    private var lastBlockHost = ""
+    private var lastBlockHostAt = 0L
     private var engine: FlutterEngine? = null
     private var pending = false
     private var lastHandledAt = 0L
@@ -69,6 +106,12 @@ class GuardAccessibilityService : AccessibilityService() {
             pendingCapture = false
             captureAndAnalyze()
         }
+    }
+
+    /** [0.3.6] تجميع أحداث المتصفح ثم فحص واحد لشريط العنوان. */
+    private val urlDebounceRunnable = Runnable {
+        urlCheckScheduled = false
+        checkBrowserUrl()
     }
 
     /** فحص دوري للمحتوى المتحرك الذي لا يرسل أحداث إمكانية وصول لكل إطار. */
@@ -103,6 +146,8 @@ class GuardAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         mainHandler.removeCallbacks(periodicScan)
         mainHandler.removeCallbacks(pendingCaptureRunnable)
+        mainHandler.removeCallbacks(urlDebounceRunnable)
+        urlExecutor.shutdownNow()
         generation++
         scanInFlight = false
         pendingCapture = false
@@ -198,6 +243,12 @@ class GuardAccessibilityService : AccessibilityService() {
         }
         lastPackage = pkg
 
+        // [0.3.6] حجب المواقع المشبوهة: إن كان هذا متصفحًا والحجب مفعّلاً
+        // فاقرأ شريط العنوان وطابقه محليًا — مستقل تمامًا عن فحص اللقطات.
+        if (GuardPrefs.webBlocking(this) && BROWSERS.contains(pkg)) {
+            scheduleUrlCheck()
+        }
+
         val now = System.currentTimeMillis()
         if (now - lastHandledAt < DEBOUNCE_MS) {
             if (!pending) {
@@ -211,6 +262,125 @@ class GuardAccessibilityService : AccessibilityService() {
         }
         lastHandledAt = now
         captureAndAnalyze()
+    }
+
+    // ==================== [0.3.6] حجب المواقع المشبوهة ====================
+
+    /** تجميع أحداث المتصفح بمهلة قصيرة كي لا نقرأ الشجرة مع كل حدث تمرير/نقر. */
+    private fun scheduleUrlCheck() {
+        if (urlCheckScheduled) return
+        urlCheckScheduled = true
+        mainHandler.postDelayed(urlDebounceRunnable, URL_DEBOUNCE_MS)
+    }
+
+    /** إطلاق الفحص على الخيط الخلفي — قراءة شجرة النافذة نداء IPC لا يليق بالخيط الرئيسي. */
+    private fun checkBrowserUrl() {
+        if (!GuardPrefs.canGuard(this) || !GuardPrefs.webBlocking(this)) return
+        val pkg = lastPackage ?: return
+        if (!BROWSERS.contains(pkg)) return
+        try {
+            urlExecutor.execute { doUrlCheck(pkg) }
+        } catch (_: Throwable) {
+            // الخيط أُغلق مع تدمير الخدمة — لا شيء
+        }
+    }
+
+    /** استخراج نص شريط العنوان، تطبيع النطاق، مطابقة القائمتين المحليتين، ثم الحجب عند الإصابة. */
+    private fun doUrlCheck(browserPkg: String) {
+        try {
+            val raw = extractAddressBarText(browserPkg) ?: return
+            // الشريط لم يتغير منذ آخر فحص (تمرير داخل الصفحة مثلاً) — لا إعادة عمل
+            if (raw == lastUrlRawChecked) return
+            lastUrlRawChecked = raw
+            val host = WebBlocklist.normalizeHost(raw) ?: return
+            if (!WebBlocklist.ensure(this)) return
+            val category = WebBlocklist.categorize(host) ?: return
+            mainHandler.post { onSiteBlocked(browserPkg, host, category) }
+        } catch (t: Throwable) {
+            Log.w(TAG, "فحص رابط المتصفح تعذر: ${t.message}")
+        }
+    }
+
+    /**
+     * قراءة نص شريط العنوان من النافذة النشطة:
+     * أولًا معرّفات الموارد المعروفة لشريط العنوان (سريعة ومؤشرات مباشرة)،
+     * ثم احتياط عام: أول حقل إدخال نصّه يشبه عنوانًا — أسماء الموارد تختلف
+     * بين المتصفحات وإصداراتها فالاحتياط يضمن التغطية.
+     */
+    private fun extractAddressBarText(browserPkg: String): String? {
+        return try {
+            val root = rootInActiveWindow ?: return null
+            val rp = root.packageName?.toString() ?: return null
+            // النافذة النشطة ليست للمتصفح (حوار نظام/تطبيق آخر فوقه) — لا شيء
+            if (rp != browserPkg && !BROWSERS.contains(rp)) return null
+            for (id in addressBarIds(browserPkg)) {
+                for (n in root.findAccessibilityNodeInfosByViewId(id)) {
+                    val t = n.text?.toString() ?: continue
+                    if (WebBlocklist.looksLikeUrl(t)) return t
+                }
+            }
+            bfsUrlText(root, maxNodes = 400)
+        } catch (t: Throwable) {
+            Log.w(TAG, "استخراج العنوان تعذر: ${t.message}")
+            null
+        }
+    }
+
+    /** معرّفات شريط العنوان المرشحة للمتصفح المعطى — كل الأسماء الشائعة عبر الصيغة pkg:id/name. */
+    private fun addressBarIds(pkg: String): List<String> = listOf(
+        "$pkg:id/url_bar",
+        "$pkg:id/url_bar_full",
+        "$pkg:id/location_bar_url",
+        "$pkg:id/location_bar_edit",
+        "$pkg:id/url",
+        "$pkg:id/url_edit",
+        "$pkg:id/omnibarTextInput",
+        "$pkg:id/address_bar",
+        "$pkg:id/search_box",
+        "$pkg:id/mozac_browser_toolbar_url_view",
+        "$pkg:id/browser_toolbar_url"
+    )
+
+    /** جولة عرض على الشجرة (بسقف عقد) بحثًا عن حقل إدخال نصّه يشبه عنوانًا. */
+    private fun bfsUrlText(root: AccessibilityNodeInfo, maxNodes: Int): String? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < maxNodes) {
+            val n = queue.removeFirst()
+            visited++
+            val cls = n.className?.toString() ?: ""
+            val txt = n.text?.toString() ?: ""
+            if (cls.contains("EditText") && WebBlocklist.looksLikeUrl(txt)) return txt
+            for (i in 0 until n.childCount) {
+                val c = try { n.getChild(i) } catch (t: Throwable) { null } ?: continue
+                queue.add(c)
+            }
+        }
+        return null
+    }
+
+    /**
+     * تنفيذ الحجب: كفّ التكرار لنفس الموقع، عداد محلي بلا نص، سجلّ بلا أي
+     * عنوان (خصوصية «لا سجلّ محتوى»)، الخروج من الصفحة آليًا إلى الرئيسية،
+     * ثم شاشة حجب فوق كل شيء.
+     */
+    private fun onSiteBlocked(browserPkg: String, host: String, category: String) {
+        val now = System.currentTimeMillis()
+        if (host == lastBlockHost && now - lastBlockHostAt < SITE_BLOCK_REPEAT_MS) return
+        lastBlockHost = host
+        lastBlockHostAt = now
+        GuardPrefs.incrementSiteBlocked(this, category)
+        GuardLog.add(
+            if (category == "adult") "🚫 حُجب موقع إباحي في $browserPkg — خرجتَ من الصفحة آليًا"
+            else "🚫 حُجب موقع خبيث/احتيالي في $browserPkg — خرجتَ من الصفحة آليًا"
+        )
+        try {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        } catch (t: Throwable) {
+            Log.w(TAG, "الخروج الآلي من الصفحة تعذر: ${t.message}")
+        }
+        OverlayController.showSiteBlock(this, category)
     }
 
     private fun captureAndAnalyze() {

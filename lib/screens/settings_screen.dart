@@ -96,6 +96,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _save();
               },
             ),
+            const SizedBox(height: 8),
+            // [0.3.6] حجب المواقع المشبوهة — طبقة الحماية قبل أن يفتح المحتوى أصلًا
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: GuardTheme.tealDeep,
+              title: const Text('حجب المواقع المشبوهة',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text(
+                'يمنع فتح المواقع المصنَّفة إباحيًا أو احتياليًا/خبيثًا في المتصفحات '
+                '(Chrome، Samsung Internet، Firefox وغيرها): يخرجك من الصفحة آليًا '
+                'ويعرض شاشة حجب. المطابقة محلية 100% من قائمة بأكثر من 1.2 مليون '
+                'نطاق مدمجة داخل التطبيق — لا شبكة إطلاقًا ولا يُسجَّل أي رابط تزوره.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              value: GuardSettings.webBlocking,
+              onChanged: (v) {
+                setState(() => GuardSettings.webBlocking = v);
+                _save();
+              },
+            ),
             const SizedBox(height: 22),
             const Text('القائمة البيضاء — حزم تطبيقات تُتجاهل بالكامل'),
             const Text(

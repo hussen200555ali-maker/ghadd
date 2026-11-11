@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -13,6 +14,9 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 
 /**
  * طبقة الاستجابة — وضعان (القسم 4.1، الطبقة الثالثة):
@@ -35,6 +39,8 @@ object OverlayController {
 
     private var current: View? = null
     private var regionWindow: View? = null
+    private var siteWindow: View? = null
+    private var siteAutoHide: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun show(context: Context) {
@@ -72,11 +78,21 @@ object OverlayController {
         }
     }
 
-    /** إزالة كل الأقنعة بعد نتيجة آمنة أو عند إيقاف الحماية يدويًا فقط. */
-    fun hideAll(context: Context) {
+    /**
+     * إزالة كل الأقنعة البصرية بعد نتيجة آمنة أو عند إيقاف الحماية يدويًا.
+     * شاشة حجب المواقع **ليست أقنعة بصرية**: الفحص الآمن الدوري يستدعي hideAll
+     * بعد الخروج الآلي من الصفحة المحجوبة مباشرة — لو أزال شاشة الحجب لتلاشت
+     * بعد لحظة. عمرها مستقل (زر «رجوع بأمان» أو 7 ثوانٍ)، وإيقاف الحماية يدويًا
+     * (stopGuard) هو من يستدعيها بـincludeSite = true.
+     */
+    fun hideAll(context: Context, includeSite: Boolean = false) {
         mainHandler.post {
             current?.let { removeCurrentView(context, it) }
             regionWindow?.let { removeRegionView(it) }
+            if (includeSite) {
+                siteWindow?.let { removeSiteView(it) }
+                cancelSiteAutoHide()
+            }
         }
     }
 
@@ -185,5 +201,112 @@ object OverlayController {
                 canvas.drawRoundRect(r, radius, radius, stroke)
             }
         }
+    }
+
+    // ==================== [0.3.6] شاشة حجب المواقع ====================
+
+    /**
+     * شاشة حجب موقع مشبوه: تغطية كاملة قابلة للمس (زر «رجوع بأمان» يعمل)،
+     * تُعرض بعد الخروج الآلي من الصفحة عبر GLOBAL_ACTION_HOME من خدمة إمكانية
+     * الوصول. تُخفى بالزر أو آليًا بعد 7 ثوانٍ — لا تبقى عائقًا دائمًا.
+     * هنا فقط تستخدم نافذة قابلة لللمس: التغطية تقتل الصفحة المحجوبة أساسًا
+     * فلا لمسٌ يمرّ منها، والمستخدم يحتاج زر الخروج.
+     */
+    fun showSiteBlock(context: Context, category: String) {
+        mainHandler.post { showSiteBlockInternal(context.applicationContext, category) }
+    }
+
+    private fun showSiteBlockInternal(context: Context, category: String) {
+        if (!Settings.canDrawOverlays(context)) return
+        siteWindow?.let { removeSiteView(it) }
+        cancelSiteAutoHide()
+
+        val d = context.resources.displayMetrics.density
+        val dp = { v: Float -> (v * d).toInt() }
+
+        fun label(text: String, sizeSp: Float, color: String, bold: Boolean, topDp: Int): TextView =
+            TextView(context).apply {
+                this.text = text
+                textSize = sizeSp
+                setTextColor(Color.parseColor(color))
+                gravity = Gravity.CENTER
+                textAlignment = View.TEXT_ALIGNMENT_CENTER
+                if (bold) setTypeface(typeface, Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(topDp.toFloat()) }
+            }
+
+        val reason = if (category == "adult")
+            "موقع مصنَّف إباحيًا — حجب محلي حسب إعدادات غَضّ"
+        else
+            "موقع مصنَّف احتياليًا أو خبيثًا — حجب محلي حسب إعدادات غَضّ"
+
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.argb(250, 8, 12, 20))
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setPadding(dp(28f), dp(28f), dp(28f), dp(28f))
+            addView(label("⛔", 46f, "#E8F0F8", bold = false, topDp = 0))
+            addView(label("حُجب موقع مشبوه", 22f, "#E8F0F8", bold = true, topDp = 12))
+            addView(label(reason, 14f, "#9FB6CC", bold = false, topDp = 10))
+            addView(label(
+                "المطابقة تمت على جهازك من قائمة مدمجة — لا يُسجَّل أي رابط تزوره",
+                12f, "#6E86A0", bold = false, topDp = 6
+            ))
+        }
+
+        val btn = Button(context).apply {
+            text = "رجوع بأمان"
+            textSize = 15f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(22f) }
+            setOnClickListener { hideSiteBlock(context) }
+        }
+        root.addView(btn)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        try {
+            val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            wm.addView(root, params)
+            siteWindow = root
+            // إخفاء آلي احتياطي — لا نترك شاشة حجب عالقة إذا خرج المستخدم بغير الزر
+            siteAutoHide = Runnable { removeSiteView(root) }
+            mainHandler.postDelayed(siteAutoHide, 7_000L)
+        } catch (_: Throwable) {
+        }
+    }
+
+    fun hideSiteBlock(context: Context) {
+        mainHandler.post {
+            siteWindow?.let { removeSiteView(it) }
+            cancelSiteAutoHide()
+        }
+    }
+
+    private fun removeSiteView(v: View) {
+        try {
+            (v.context.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
+                .removeView(v)
+        } catch (_: Throwable) {
+        }
+        if (siteWindow === v) siteWindow = null
+    }
+
+    private fun cancelSiteAutoHide() {
+        siteAutoHide?.let { mainHandler.removeCallbacks(it) }
+        siteAutoHide = null
     }
 }

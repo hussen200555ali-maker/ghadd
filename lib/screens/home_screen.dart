@@ -340,9 +340,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(height: 8),
             Row(
               children: [
-                _statCard('اليوم', '${_stats['blocked_today'] ?? 0}'),
+                _statCard('طمس اليوم', '${_stats['blocked_today'] ?? 0}'),
                 const SizedBox(width: 10),
-                _statCard('الإجمالي', '${_stats['blocked_total'] ?? 0}'),
+                _statCard('طمس الإجمالي', '${_stats['blocked_total'] ?? 0}'),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // [0.3.6] عدادات حجب المواقع — طبقة الحجب قبل أن يُفتح المحتوى
+            Row(
+              children: [
+                _statCard('مواقع محجوبة اليوم', '${_stats['sites_blocked_today'] ?? 0}'),
+                const SizedBox(width: 10),
+                _statCard('مواقع محجوبة إجمالًا', '${_stats['sites_blocked_total'] ?? 0}'),
               ],
             ),
             const SizedBox(height: 10),

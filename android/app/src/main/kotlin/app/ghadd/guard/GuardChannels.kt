@@ -48,6 +48,8 @@ object GuardChannels {
                     }
                     (args["expanded"] as? Boolean)?.let { GuardPrefs.setExpanded(context, it) }
                     (args["regionMode"] as? Boolean)?.let { GuardPrefs.setRegionMode(context, it) }
+                    // [0.3.6] حجب المواقع المشبوهة — مرآة مفتاح الواجهة
+                    (args["webBlocking"] as? Boolean)?.let { GuardPrefs.setWebBlocking(context, it) }
                     result.success(true)
                 }
                 "stats" -> result.success(GuardPrefs.stats(context))
@@ -69,7 +71,7 @@ object GuardChannels {
                     // الإيقاف ولا غيره: كل قتل/نوم/مسح من «الأخيرة» يُعالَج
                     // بـSTART_STICKY والاسترداد الصفري فتعود الحماية وحدها.
                     GuardAccessibilityService.instance?.cancelPendingScans()
-                    OverlayController.hideAll(context)
+                    OverlayController.hideAll(context, includeSite = true)
                     ProjectionService.stop(context)
                     GuardForegroundService.stop(context)
                     result.success(true)
