@@ -7,6 +7,7 @@ import java.io.FileOutputStream
 import java.net.IDN
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 import java.util.Locale
 import java.util.zip.GZIPInputStream
 
@@ -77,11 +78,11 @@ object WebBlocklist {
                 val started = System.currentTimeMillis()
                 val a = mapGzAsset(context, ASSET_ADULT, "web_adult_$VERSION.bin")
                 val h = mapGzAsset(context, ASSET_HARM, "web_harm_$VERSION.bin")
-                adultDomains = a.second
-                harmDomains = h.second
-                adultBuf = a.first
-                harmBuf = h.first
-                ready = a.first != null && h.first != null
+                adultDomains = a?.second ?: 0
+                harmDomains = h?.second ?: 0
+                adultBuf = a?.first
+                harmBuf = h?.first
+                ready = a != null && h != null
                 if (!ready) {
                     failed = true
                     Log.e(TAG, "قوائم حجب المواقع غير متاحة")
@@ -216,8 +217,10 @@ object WebBlocklist {
             }
         }
         if (!f.exists() || f.length() == 0L) return null
-        val ch = FileChannel.open(f.toPath(), FileChannel.MapMode.READ_ONLY)
+        // open تقبل OpenOption حصرًا (وليس MapMode) — والخريطة عبر map()
+        val ch = FileChannel.open(f.toPath(), StandardOpenOption.READ)
         try {
+            @Suppress("DEPRECATION")
             val buf = ch.map(FileChannel.MapMode.READ_ONLY, 0, f.length())
             var count = 0
             val cap = buf.capacity()
